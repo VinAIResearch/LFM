@@ -197,8 +197,8 @@ def train(rank, gpu, args):
             t = torch.rand((x_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
             x_0 = torch.randn_like(x_1)
-            v_t = (1 - t) * x_1 + (1e-4 + (1 - 1e-4) * t) * x_0
-            u = (1 - 1e-4) * x_0 - x_1
+            v_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
+            u = (1 - 1e-5) * x_0 - x_1
             
             loss = F.mse_loss(model(t.squeeze(), v_t), u)
             loss.backward()
