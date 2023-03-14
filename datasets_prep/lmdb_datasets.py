@@ -16,7 +16,8 @@ from PIL import Image
 def num_samples(dataset, train):
     if dataset == 'celeba':
         return 27000 if train else 3000
-    
+    elif dataset == 'lsun_church':
+        return 126227
     else:
         raise NotImplementedError('dataset %s is unknown' % dataset)
 

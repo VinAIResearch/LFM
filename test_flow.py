@@ -108,7 +108,7 @@ def sample_and_test(args):
         for i in range(iters_needed):
             with torch.no_grad():
                 x_0 = torch.randn(args.batch_size, 3, args.image_size, args.image_size).to(device)
-                fake_sample = sample_from_model(model, x_0, args.num_timesteps)
+                fake_sample = sample_from_model(model, x_0, args.num_timesteps)[-1]
                 fake_sample = to_range_0_1(fake_sample)
                 for j, x in enumerate(fake_sample):
                     index = i * args.batch_size + j 
@@ -117,7 +117,7 @@ def sample_and_test(args):
         
         paths = [save_dir, real_img_dir]
     
-        kwargs = {'batch_size': 100, 'device': device, 'dims': 2048}
+        kwargs = {'batch_size': 200, 'device': device, 'dims': 2048}
         fid = calculate_fid_given_paths(paths=paths, **kwargs)
         print('FID = {}'.format(fid))
     else:
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     #geenrator and training
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--real_img_dir', default='./pytorch_fid/cifar10_train_stat.npy', help='directory to real images for FID computation')
-
+    parser.add_argument("--class_cond", type=bool, default=False)
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')

@@ -3,3 +3,4 @@ __pycache__/
 saved_info/
 data/
 improved_diffusion.egg-info/
+generated_samples/

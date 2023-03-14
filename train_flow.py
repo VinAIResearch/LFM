@@ -107,7 +107,7 @@ def train(rank, gpu, args):
         train_transform, valid_transform = _data_transforms_stacked_mnist()
         dataset = StackedMNIST(root='./data', train=True, download=False, transform=train_transform)
         
-    elif args.dataset == 'lsun':
+    elif args.dataset == 'lsun_church':
         train_transform = transforms.Compose([
                         transforms.Resize(args.image_size),
                         transforms.CenterCrop(args.image_size),
@@ -115,7 +115,7 @@ def train(rank, gpu, args):
                         transforms.ToTensor(),
                         transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
                     ])
-        train_data = LSUN(root='./data/LSUN/', classes=['church_outdoor_train'], transform=train_transform)
+        train_data = LSUN(root='./data/church_outdoor_train_lmdb/', classes=['church_outdoor_train'], transform=train_transform)
         subset = list(range(0, 120000))
         dataset = torch.utils.data.Subset(train_data, subset)
       
