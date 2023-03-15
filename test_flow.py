@@ -10,14 +10,24 @@ import numpy as np
 
 import os
 from torchdiffeq import odeint_adjoint as odeint
+
 import torchvision
 from improved_diffusion.unet import UNetModel
 from pytorch_fid.fid_score import calculate_fid_given_paths
 
-def sample_from_model(model, x_0, num_timesteps):
+def sample_from_model(model, x_0, num_timesteps, args):
     # t = np.linspace(1., 0., num=num_timesteps)
     t = torch.tensor([1., 0.], device="cuda")
-    fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5)
+    fake_image = odeint(model, 
+                        x_0, 
+                        t, 
+                        method=args.method, 
+                        atol = args.atol, 
+                        rtol = args.rtol,
+                        adjoint_method=args.method,
+                        adjoint_atol= args.atol,
+                        adjoint_rtol= args.rtol,
+                        )
     return fake_image
 
 def create_model(
@@ -108,7 +118,7 @@ def sample_and_test(args):
         for i in range(iters_needed):
             with torch.no_grad():
                 x_0 = torch.randn(args.batch_size, 3, args.image_size, args.image_size).to(device)
-                fake_sample = sample_from_model(model, x_0, args.num_timesteps)[-1]
+                fake_sample = sample_from_model(model, x_0, args.num_timesteps, args)[-1]
                 fake_sample = to_range_0_1(fake_sample)
                 for j, x in enumerate(fake_sample):
                     index = i * args.batch_size + j 
@@ -121,10 +131,10 @@ def sample_and_test(args):
         fid = calculate_fid_given_paths(paths=paths, **kwargs)
         print('FID = {}'.format(fid))
     else:
-        x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
-        fake_sample = sample_from_model(model, x_0, args.num_timesteps)
+        x_0 = torch.randn(args.batch_size, 3,args.image_size, args.image_size).to(device)
+        fake_sample = sample_from_model(model, x_0, args.num_timesteps, args)[-1]
         fake_sample = to_range_0_1(fake_sample)
-        torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset))
+        torchvision.utils.save_image(fake_sample, './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.atol, args.rtol, args.method))
 
     
     
@@ -144,7 +154,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
-    parser.add_argument('--attn_resolutions', default=(16,),
+    parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,),
                             help='resolution of applying attention')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
@@ -160,6 +170,9 @@ if __name__ == '__main__':
     parser.add_argument('--num_timesteps', type=int, default=200)
     
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
+    parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
+    parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
+    parser.add_argument('--method', type=str, default='dopri5', help='solver_method')
         
 
 
