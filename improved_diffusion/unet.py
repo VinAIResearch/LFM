@@ -332,6 +332,8 @@ class UNetModel(nn.Module):
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
+        self.count_nfe = False
+        self.nfe = 0
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -471,7 +473,8 @@ class UNetModel(nn.Module):
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
-
+        if self.count_nfe:
+            self.nfe += 1
         hs = []
         if timesteps.view(-1, 1).size(0) != x.size(0):
             timesteps = timesteps * th.ones(x.size(0), device="cuda")

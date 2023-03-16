@@ -15,8 +15,22 @@ import torchvision
 from improved_diffusion.unet import UNetModel
 from pytorch_fid.fid_score import calculate_fid_given_paths
 
+ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
+FIXER_SOLVER = ["euler", "rk4", "midpoint"]
+
 def sample_from_model(model, x_0, num_timesteps, args):
     # t = np.linspace(1., 0., num=num_timesteps)
+    if args.method in ADAPTIVE_SOLVER:
+        options = {
+            "dtype": torch.float64,
+        }
+    else:
+        options = {
+            "step_size": args.step_size,
+            "perturb": args.perturb
+        }
+    if not args.compute_fid:
+        model.count_nfe = True
     t = torch.tensor([1., 0.], device="cuda")
     fake_image = odeint(model, 
                         x_0, 
@@ -27,6 +41,7 @@ def sample_from_model(model, x_0, num_timesteps, args):
                         adjoint_method=args.method,
                         adjoint_atol= args.atol,
                         adjoint_rtol= args.rtol,
+                        options=options
                         )
     return fake_image
 
@@ -134,7 +149,8 @@ def sample_and_test(args):
         x_0 = torch.randn(args.batch_size, 3,args.image_size, args.image_size).to(device)
         fake_sample = sample_from_model(model, x_0, args.num_timesteps, args)[-1]
         fake_sample = to_range_0_1(fake_sample)
-        torchvision.utils.save_image(fake_sample, './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.atol, args.rtol, args.method))
+        print("NFE: {}".format(model.nfe))
+        torchvision.utils.save_image(fake_sample, './samples_{}_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol, model.nfe))
 
     
     
@@ -172,7 +188,9 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
-    parser.add_argument('--method', type=str, default='dopri5', help='solver_method')
+    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", "euler", "midpoint", "rk4"])
+    parser.add_argument('--step_size', type=float, default=0.01, help='step_size')
+    parser.add_argument('--perturb', action='store_true', default=False)
         
 
 
