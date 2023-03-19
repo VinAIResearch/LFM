@@ -3,7 +3,6 @@ model:
   target: ldm.models.flow.flow_matching.LatentFlowMatching
   params:
     log_every_t: 200
-    timesteps: 1000
     first_stage_key: image
     image_size: 64
     channels: 3
@@ -57,7 +56,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 48
+    batch_size: 8
     num_workers: 5
     wrap: false
     train:

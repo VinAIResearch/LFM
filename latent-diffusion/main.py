@@ -184,6 +184,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
     def prepare_data(self):
         for data_cfg in self.dataset_configs.values():
+            print(data_cfg)
             instantiate_from_config(data_cfg)
 
     def setup(self, stage=None):
@@ -606,7 +607,7 @@ if __name__ == "__main__":
             "image_logger": {
                 "target": "main.ImageLogger",
                 "params": {
-                    "batch_frequency": 750,
+                    "batch_frequency": 200,
                     "max_images": 4,
                     "clamp": True
                 }

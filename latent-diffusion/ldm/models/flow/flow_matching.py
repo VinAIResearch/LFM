@@ -122,7 +122,7 @@ class FlowMatching(pl.LightningModule):
         t = torch.tensor([1., 0.], device="cuda")
         x_0 = torch.randn((batch_size, 3, self.image_size, self.image_size))
         fake_image = odeint(self.model, x_0, t, atol=1e-5, rtol=1e-5)
-        return fake_image
+        return fake_image[-1], fake_image
 
     def get_input(self, batch, k):
         x = batch[k]
@@ -175,6 +175,51 @@ class FlowMatching(pl.LightningModule):
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:
             self.model_ema(self.model)
+    
+    def _get_rows_from_list(self, samples):
+        n_imgs_per_row = len(samples)
+        denoise_grid = rearrange(samples, 'n b c h w -> b n c h w')
+        denoise_grid = rearrange(denoise_grid, 'b n c h w -> (b n) c h w')
+        denoise_grid = make_grid(denoise_grid, nrow=n_imgs_per_row)
+        return denoise_grid
+            
+    @torch.no_grad()
+    def log_images(self, batch, N=8, n_row=2, sample=True, return_keys=None, **kwargs):
+        log = dict()
+        x = self.get_input(batch, self.first_stage_key)
+        N = min(x.shape[0], N)
+        n_row = min(x.shape[0], n_row)
+        x = x.to(self.device)[:N]
+        log["inputs"] = x
+
+        # get diffusion row
+        flow_matching_row = list()
+        x_1 = x[:n_row]
+                    
+        for t in np.linspace(0, 1, 20):
+            x_0 = torch.randn_like(x_1, device=self.device)
+            x_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
+            flow_matching_row.append(self.decode_first_stage(x_t))
+
+        flow_matching_row = torch.stack(flow_matching_row)  # n_log_step, n_row, C, H, W
+        flow_grid = rearrange(flow_matching_row, 'n b c h w -> b n c h w')
+        flow_grid = rearrange(flow_grid, 'b n c h w -> (b n) c h w')
+        flow_grid = make_grid(flow_grid, nrow=flow_matching_row.shape[0])
+        log["flow_row"] = flow_grid
+
+        if sample:
+            # get denoise row
+            with self.ema_scope("Plotting"):
+                samples, denoise_row = self.sample(batch_size=N)
+            log["samples"] = samples
+            log["denoise_row"] = self._get_rows_from_list(denoise_row)
+
+        if return_keys:
+            if np.intersect1d(list(log.keys()), return_keys).shape[0] == 0:
+                return log
+            else:
+                return {key: log[key] for key in return_keys}
+        return log
 
     def configure_optimizers(self):
         lr = self.learning_rate
@@ -197,7 +242,6 @@ class LatentFlowMatching(FlowMatching):
                  scale_by_std=False,
                  *args, **kwargs):
         self.scale_by_std = scale_by_std
-        assert self.num_timesteps_cond <= kwargs['timesteps']
         # for backwards compatibility after implementation of DiffusionWrapper
         if conditioning_key is None:
             conditioning_key = 'concat' if concat_mode else 'crossattn'
@@ -622,8 +666,8 @@ class LatentFlowMatching(FlowMatching):
             if self.cond_stage_trainable:
                 c = self.get_learned_conditioning(c)
         
-        t = torch.rand((x_1.size(0),)).view(-1, 1, 1, 1)
-        x_0 = torch.randn_like(x_1)
+        t = torch.rand((x_1.size(0),), device=self.device).view(-1, 1, 1, 1)
+        x_0 = torch.randn_like(x_1, device=self.device)
         v_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
         u = (1 - 1e-5) * x_0 - x_1
         
@@ -636,7 +680,7 @@ class LatentFlowMatching(FlowMatching):
         return loss, loss_dict
     
 
-    def apply_model(self, t, v_t, c, return_ids=False):
+    def apply_model(self, t, v_t, cond, return_ids=False):
 
         if isinstance(cond, dict):
             # hybrid case, cond is exptected to be a dict
@@ -738,19 +782,128 @@ class LatentFlowMatching(FlowMatching):
 
 
     @torch.no_grad()
-    def sample(self, cond, batch_size=16):
+    def sample(self, cond, batch_size=16, is_training=True):
         if cond is not None:
             if isinstance(cond, dict):
                 cond = {key: cond[key][:batch_size] if not isinstance(cond[key], list) else
                 list(map(lambda x: x[:batch_size], cond[key])) for key in cond}
             else:
                 cond = [c[:batch_size] for c in cond] if isinstance(cond, list) else cond[:batch_size]
-        t = torch.tensor([1., 0.], device="cuda")
+        if is_training:
+            t = torch.tensor([1., 0.75, 0.5, 0.25, 0.], device="cuda")
+        else:
+            t = torch.tensor([1., 0.], device="cuda")
         x_0 = torch.randn((batch_size, self.channels, self.image_size, self.image_size))
         def support_func(t, x_0):
             return self.model(t, x_0, cond)
-        fake_image = odeint(support_func, x_0, t, cond, atol=1e-5, rtol=1e-5)
-        return fake_image
+        fake_images = odeint(support_func, x_0, t, cond, atol=1e-5, rtol=1e-5)
+        return fake_images[-1], fake_images
+
+
+    
+    
+    @torch.no_grad()
+    def log_images(self, batch, N=8, n_row=4, sample=True, return_keys=None,
+                   quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
+                   plot_flow_matching_rows=True, **kwargs):
+
+        log = dict()
+        z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key,
+                                           return_first_stage_outputs=True,
+                                           force_c_encode=True,
+                                           return_original_cond=True,
+                                           bs=N)
+        N = min(x.shape[0], N)
+        n_row = min(x.shape[0], n_row)
+        log["inputs"] = x
+        log["reconstruction"] = xrec
+        if self.model.conditioning_key is not None:
+            if hasattr(self.cond_stage_model, "decode"):
+                xc = self.cond_stage_model.decode(c)
+                log["conditioning"] = xc
+            elif self.cond_stage_key in ["caption"]:
+                xc = log_txt_as_img((x.shape[2], x.shape[3]), batch["caption"])
+                log["conditioning"] = xc
+            elif self.cond_stage_key == 'class_label':
+                xc = log_txt_as_img((x.shape[2], x.shape[3]), batch["human_label"])
+                log['conditioning'] = xc
+            elif isimage(xc):
+                log["conditioning"] = xc
+            if ismap(xc):
+                log["original_conditioning"] = self.to_rgb(xc)
+
+        if plot_flow_matching_rows:
+            # get diffusion row
+            flow_matching_row = list()
+            z_1 = z[:n_row]
+                        
+            for t in np.linspace(0, 1, 20):
+                z_0 = torch.randn_like(z_1, device=self.device)
+                v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
+                flow_matching_row.append(self.decode_first_stage(v_t))
+
+            flow_matching_row = torch.stack(flow_matching_row)  # n_log_step, n_row, C, H, W
+            flow_grid = rearrange(flow_matching_row, 'n b c h w -> b n c h w')
+            flow_grid = rearrange(flow_grid, 'b n c h w -> (b n) c h w')
+            flow_grid = make_grid(flow_grid, nrow=flow_matching_row.shape[0])
+            log["flow_row"] = flow_grid
+
+        if sample:
+            # get denoise row
+            with self.ema_scope("Plotting"):
+                samples, z_denoise_row = self.sample(self, c, batch_size=N, is_training=True)
+            x_samples = self.decode_first_stage(samples)
+            log["samples"] = x_samples
+            if plot_denoise_rows:
+                denoise_grid = self._get_denoise_row_from_list(z_denoise_row)
+                log["denoise_row"] = denoise_grid
+
+            # if quantize_denoised and not isinstance(self.first_stage_model, AutoencoderKL) and not isinstance(
+            #         self.first_stage_model, IdentityFirstStage):
+            #     # also display when quantizing x0 while sampling
+            #     with self.ema_scope("Plotting Quantized Denoised"):
+            #         samples, z_denoise_row = self.sample_log(cond=c,batch_size=N,ddim=use_ddim,
+            #                                                  ddim_steps=ddim_steps,eta=ddim_eta,
+            #                                                  quantize_denoised=True)
+            #     x_samples = self.decode_first_stage(samples.to(self.device))
+            #     log["samples_x0_quantized"] = x_samples
+
+            # if inpaint:
+            #     # make a simple center square
+            #     b, h, w = z.shape[0], z.shape[2], z.shape[3]
+            #     mask = torch.ones(N, h, w).to(self.device)
+            #     # zeros will be filled in
+            #     mask[:, h // 4:3 * h // 4, w // 4:3 * w // 4] = 0.
+            #     mask = mask[:, None, ...]
+            #     with self.ema_scope("Plotting Inpaint"):
+
+            #         samples, _ = self.sample_log(cond=c,batch_size=N,ddim=use_ddim, eta=ddim_eta,
+            #                                     ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+            #     x_samples = self.decode_first_stage(samples.to(self.device))
+            #     log["samples_inpainting"] = x_samples
+            #     log["mask"] = mask
+
+            #     # outpaint
+            #     with self.ema_scope("Plotting Outpaint"):
+            #         samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,eta=ddim_eta,
+            #                                     ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+            #     x_samples = self.decode_first_stage(samples.to(self.device))
+            #     log["samples_outpainting"] = x_samples
+
+        # if plot_progressive_rows:
+        #     with self.ema_scope("Plotting Progressives"):
+        #         img, progressives = self.progressive_denoising(c,
+        #                                                        shape=(self.channels, self.image_size, self.image_size),
+        #                                                        batch_size=N)
+        #     prog_row = self._get_denoise_row_from_list(progressives, desc="Progressive Generation")
+        #     log["progressive_row"] = prog_row
+
+        if return_keys:
+            if np.intersect1d(list(log.keys()), return_keys).shape[0] == 0:
+                return log
+            else:
+                return {key: log[key] for key in return_keys}
+        return log
 
     
 
