@@ -6,7 +6,7 @@ model:
     first_stage_key: image
     image_size: 64
     channels: 3
-    monitor: val/loss_simple_ema
+    monitor: val/loss
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.UNetModel
@@ -56,7 +56,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 8
+    batch_size: 30
     num_workers: 5
     wrap: false
     train:
@@ -70,8 +70,8 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 5000
-        max_images: 8
+        batch_frequency: 200
+        max_images: 16
         increase_log_steps: False
 
   trainer:

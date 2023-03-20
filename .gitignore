@@ -6,3 +6,7 @@ improved_diffusion.egg-info/
 generated_samples/
 *.zip
 *.pth
+*.ckpt
+__MACOSX/
+logs/
+*lmdb

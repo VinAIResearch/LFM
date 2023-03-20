@@ -18,7 +18,7 @@ from tqdm import tqdm
 from torchvision.utils import make_grid
 from pytorch_lightning.utilities.distributed import rank_zero_only
 from torchdiffeq import odeint_adjoint as odeint
-
+import functools
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
 from ldm.modules.ema import LitEma
 from ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianDistribution
@@ -782,7 +782,7 @@ class LatentFlowMatching(FlowMatching):
 
 
     @torch.no_grad()
-    def sample(self, cond, batch_size=16, is_training=True):
+    def sample(self, cond, batch_size, is_training=True):
         if cond is not None:
             if isinstance(cond, dict):
                 cond = {key: cond[key][:batch_size] if not isinstance(cond[key], list) else
@@ -790,13 +790,21 @@ class LatentFlowMatching(FlowMatching):
             else:
                 cond = [c[:batch_size] for c in cond] if isinstance(cond, list) else cond[:batch_size]
         if is_training:
-            t = torch.tensor([1., 0.75, 0.5, 0.25, 0.], device="cuda")
+            t = torch.tensor([1., 0.75, 0.5, 0.25, 0.], device=self.device)
         else:
-            t = torch.tensor([1., 0.], device="cuda")
-        x_0 = torch.randn((batch_size, self.channels, self.image_size, self.image_size))
-        def support_func(t, x_0):
-            return self.model(t, x_0, cond)
-        fake_images = odeint(support_func, x_0, t, cond, atol=1e-5, rtol=1e-5)
+            t = torch.tensor([1., 0.], device=self.device)
+        x_0 = torch.randn((batch_size, self.channels, self.image_size, self.image_size), device=self.device)
+        
+        class ode_func(nn.Module):
+            def __init__(self, cond, model):
+                super().__init__()
+                self.cond = nn.Parameter(cond)
+                self.model = model
+            def forward(self, t, x):
+                return self.model(t, x, cond)
+        
+        ode_func_sp = ode_func(cond, self.model)
+        fake_images = odeint(ode_func_sp, x_0, t, atol=1e-5, rtol=1e-5)
         return fake_images[-1], fake_images
 
 
@@ -851,7 +859,7 @@ class LatentFlowMatching(FlowMatching):
         if sample:
             # get denoise row
             with self.ema_scope("Plotting"):
-                samples, z_denoise_row = self.sample(self, c, batch_size=N, is_training=True)
+                samples, z_denoise_row = self.sample(c, batch_size=N, is_training=True)
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
             if plot_denoise_rows:

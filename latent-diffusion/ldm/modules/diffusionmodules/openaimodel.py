@@ -720,6 +720,8 @@ class UNetModel(nn.Module):
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
         hs = []
+        if timesteps.view(-1, 1).size(0) != x.size(0):
+            timesteps = timesteps * th.ones(x.size(0), device="cuda")
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 

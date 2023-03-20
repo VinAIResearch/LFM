@@ -306,6 +306,7 @@ class ImageLogger(Callback):
         self.log_on_batch_idx = log_on_batch_idx
         self.log_images_kwargs = log_images_kwargs if log_images_kwargs else {}
         self.log_first_step = log_first_step
+        print("Batch Frequency: {}".format(self.batch_freq))
 
     @rank_zero_only
     def _testtube(self, pl_module, images, batch_idx, split):
@@ -339,13 +340,9 @@ class ImageLogger(Callback):
             Image.fromarray(grid).save(path)
 
     def log_img(self, pl_module, batch, batch_idx, split="train"):
-        check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        if (self.check_frequency(check_idx) and  # batch_idx % self.batch_freq == 0
-                hasattr(pl_module, "log_images") and
-                callable(pl_module.log_images) and
-                self.max_images > 0):
+        # check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
+        if (pl_module.global_step % self.batch_freq == 0) and hasattr(pl_module, "log_images") and callable(pl_module.log_images) and self.max_images > 0:
             logger = type(pl_module.logger)
-
             is_train = pl_module.training
             if is_train:
                 pl_module.eval()
@@ -362,7 +359,7 @@ class ImageLogger(Callback):
                         images[k] = torch.clamp(images[k], -1., 1.)
 
             self.log_local(pl_module.logger.save_dir, split, images,
-                           pl_module.global_step, pl_module.current_epoch, batch_idx)
+                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
             logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
             logger_log_images(pl_module, images, pl_module.global_step, split)
