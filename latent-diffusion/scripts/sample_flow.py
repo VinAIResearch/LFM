@@ -6,7 +6,7 @@ from tqdm import trange
 
 from omegaconf import OmegaConf
 from PIL import Image
-
+from pytorch_fid.fid_score import calculate_fid_given_paths
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.util import instantiate_from_config
 
@@ -51,49 +51,17 @@ def logs2pil(logs, keys=["sample"]):
 
 
 @torch.no_grad()
-def convsample(model, shape, return_intermediates=True,
-               verbose=True,
-               make_prog_row=False):
-
-
-    if not make_prog_row:
-        return model.p_sample_loop(None, shape,
-                                   return_intermediates=return_intermediates, verbose=verbose)
-    else:
-        return model.progressive_denoising(
-            None, shape, verbose=True
-        )
-
-
-@torch.no_grad()
-def convsample_ddim(model, steps, shape, eta=1.0
-                    ):
-    ddim = DDIMSampler(model)
-    bs = shape[0]
-    shape = shape[1:]
-    samples, intermediates = ddim.sample(steps, batch_size=bs, shape=shape, eta=eta, verbose=False,)
-    return samples, intermediates
-
-
-@torch.no_grad()
 def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=None, eta=1.0,):
-
-
     log = dict()
 
     shape = [batch_size,
-             model.model.diffusion_model.in_channels,
-             model.model.diffusion_model.image_size,
-             model.model.diffusion_model.image_size]
+             model.model.flowmatching_model.in_channels,
+             model.model.flowmatching_model.image_size,
+             model.model.flowmatching_model.image_size]
 
     with model.ema_scope("Plotting"):
         t0 = time.time()
-        if vanilla:
-            sample, progrow = convsample(model, shape,
-                                         make_prog_row=True)
-        else:
-            sample, intermediates = convsample_ddim(model,  steps=custom_steps, shape=shape,
-                                                    eta=eta)
+        sample, intermediates = model.sample(None, batch_size, is_training=True)
 
         t1 = time.time()
 
@@ -105,12 +73,7 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     print(f'Throughput for this batch: {log["throughput"]}')
     return log
 
-def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None, n_samples=50000, nplog=None):
-    if vanilla:
-        print(f'Using Vanilla DDPM sampling with {model.num_timesteps} sampling steps.')
-    else:
-        print(f'Using DDIM sampling with {custom_steps} sampling steps and eta={eta}')
-
+def run(model, logdir, batch_size=50, n_samples=50000, nplog=None):
 
     tstart = time.time()
     n_saved = len(glob.glob(os.path.join(logdir,'*.png')))-1
@@ -120,9 +83,7 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
 
         print(f"Running unconditional sampling for {n_samples} samples")
         for _ in trange(n_samples // batch_size, desc="Sampling Batches (unconditional)"):
-            logs = make_convolutional_sample(model, batch_size=batch_size,
-                                             vanilla=vanilla, custom_steps=custom_steps,
-                                             eta=eta)
+            logs = make_convolutional_sample(model, batch_size=batch_size)
             n_saved = save_logs(logs, logdir, n_saved=n_saved, key="sample")
             all_images.extend([custom_to_np(logs["sample"])])
             if n_saved >= n_samples:
@@ -177,21 +138,6 @@ def get_parser():
         default=50000
     )
     parser.add_argument(
-        "-e",
-        "--eta",
-        type=float,
-        nargs="?",
-        help="eta for ddim sampling (0.0 yields deterministic sampling)",
-        default=1.0
-    )
-    parser.add_argument(
-        "-v",
-        "--vanilla_sample",
-        default=False,
-        action='store_true',
-        help="vanilla sampling (default option is DDIM sampling)?",
-    )
-    parser.add_argument(
         "-l",
         "--logdir",
         type=str,
@@ -200,20 +146,15 @@ def get_parser():
         default="none"
     )
     parser.add_argument(
-        "-c",
-        "--custom_steps",
-        type=int,
-        nargs="?",
-        help="number of steps for ddim and fastdpm sampling",
-        default=50
-    )
-    parser.add_argument(
+        "-b",
         "--batch_size",
         type=int,
         nargs="?",
         help="the bs",
         default=10
     )
+    parser.add_argument('--compute_fid', action='store_true', default=False,
+                            help='whether or not compute FID')
     return parser
 
 
@@ -233,6 +174,7 @@ def load_model(config, ckpt, gpu, eval_mode):
     else:
         pl_sd = {"state_dict": None}
         global_step = None
+    print(config)
     model = load_model_from_config(config.model,
                                    pl_sd["state_dict"])
 
@@ -266,7 +208,8 @@ if __name__ == "__main__":
         logdir = opt.resume.rstrip("/")
         ckpt = os.path.join(logdir, "model.ckpt")
 
-    base_configs = sorted(glob.glob(os.path.join(logdir, "config.yaml")))
+    logdir = "/".join(logdir.split("/")[:-1]) 
+    base_configs = sorted(glob.glob(os.path.join(logdir, "configs", "*.yaml")))
     opt.base = base_configs
 
     configs = [OmegaConf.load(cfg) for cfg in opt.base]
@@ -306,8 +249,12 @@ if __name__ == "__main__":
     print(sampling_conf)
 
 
-    run(model, imglogdir, eta=opt.eta,
-        vanilla=opt.vanilla_sample,  n_samples=opt.n_samples, custom_steps=opt.custom_steps,
-        batch_size=opt.batch_size, nplog=numpylogdir)
+    run(model, imglogdir, n_samples=opt.n_samples, batch_size=opt.batch_size, nplog=numpylogdir)
+    
+    if opt.compute_fid:
+        paths = [imglogdir, "pytorch_fid/celeba_256_stat.npy"]
+        kwargs = {'batch_size': 100, 'device': "cuda", 'dims': 2048}
+        fid = calculate_fid_given_paths(paths=paths, **kwargs)
+        print('FID = {}'.format(fid))
 
     print("done.")
