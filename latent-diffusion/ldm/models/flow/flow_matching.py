@@ -137,8 +137,8 @@ class FlowMatching(pl.LightningModule):
         
         t = torch.rand((x_1.size(0),)).view(-1, 1, 1, 1)
         x_0 = torch.randn_like(x_1)
-        v_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
-        u = (1 - 1e-5) * x_0 - x_1
+        v_t = (1 - t) * x_1 + (1e-25 + (1 - 1e-25) * t) * x_0
+        u = (1 - 1e-25) * x_0 - x_1
         
         model_out = self.model(t.squeeze(), v_t)
         loss = torch.nn.functional.mse_loss(model_out, u)
@@ -668,8 +668,8 @@ class LatentFlowMatching(FlowMatching):
         
         t = torch.rand((x_1.size(0),), device=self.device).view(-1, 1, 1, 1)
         x_0 = torch.randn_like(x_1, device=self.device)
-        v_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
-        u = (1 - 1e-5) * x_0 - x_1
+        v_t = (1 - t) * x_1 + (1e-25 + (1 - 1e-25) * t) * x_0
+        u = (1 - 1e-25) * x_0 - x_1
         
         model_out = self.apply_model(t.squeeze(), v_t, c) # adding condition here
         loss = torch.nn.functional.mse_loss(model_out, u)
