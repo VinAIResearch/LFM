@@ -186,6 +186,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_timesteps', type=int, default=200)
     
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
+    
+    
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", "euler", "midpoint", "rk4"])

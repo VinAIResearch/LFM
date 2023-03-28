@@ -242,7 +242,7 @@ class LatentFlowMatching(FlowMatching):
                  scale_by_std=False,
                  *args, **kwargs):
         self.scale_by_std = scale_by_std
-        # for backwards compatibility after implementation of DiffusionWrapper
+        # for backwards compatibility after implementation of FlowMatchingWrapper
         if conditioning_key is None:
             conditioning_key = 'concat' if concat_mode else 'crossattn'
         if cond_stage_config == '__is_unconditional__':
@@ -847,7 +847,7 @@ class LatentFlowMatching(FlowMatching):
                         
             for t in np.linspace(0, 1, 20):
                 z_0 = torch.randn_like(z_1, device=self.device)
-                v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
+                v_t = (1 - t) * z_1 + (1e-25 + (1 - 1e-25) * t) * z_0
                 flow_matching_row.append(self.decode_first_stage(v_t))
 
             flow_matching_row = torch.stack(flow_matching_row)  # n_log_step, n_row, C, H, W

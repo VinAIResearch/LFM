@@ -3,11 +3,10 @@ import torch
 import time
 import numpy as np
 from tqdm import trange
-
+from torchdiffeq import odeint_adjoint as odeint
 from omegaconf import OmegaConf
 from PIL import Image
 from pytorch_fid.fid_score import calculate_fid_given_paths
-from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.util import instantiate_from_config
 
 rescale = lambda x: (x + 1.) / 2.
@@ -22,6 +21,35 @@ def custom_to_pil(x):
     if not x.mode == "RGB":
         x = x.convert("RGB")
     return x
+
+ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
+FIXER_SOLVER = ["euler", "rk4", "midpoint"]
+
+def sample_from_model(model, x_0, args):
+    if args.method in ADAPTIVE_SOLVER:
+        options = {
+            "dtype": torch.float64,
+        }
+    else:
+        options = {
+            "step_size": args.step_size,
+            "perturb": args.perturb
+        }
+    if not args.compute_fid:
+        model.count_nfe = True
+    t = torch.tensor([1., 0.], device="cuda")
+    fake_image = odeint(model, 
+                        x_0, 
+                        t, 
+                        method=args.method, 
+                        atol = args.atol, 
+                        rtol = args.rtol,
+                        adjoint_method=args.method,
+                        adjoint_atol= args.atol,
+                        adjoint_rtol= args.rtol,
+                        options=options
+                        )
+    return fake_image
 
 
 def custom_to_np(x):
@@ -51,18 +79,19 @@ def logs2pil(logs, keys=["sample"]):
 
 
 @torch.no_grad()
-def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=None, eta=1.0,):
+def make_convolutional_sample(model, opt):
     log = dict()
 
-    shape = [batch_size,
+    shape = [opt.batch_size,
              model.model.flowmatching_model.in_channels,
              model.model.flowmatching_model.image_size,
              model.model.flowmatching_model.image_size]
 
     with model.ema_scope("Plotting"):
         t0 = time.time()
-        sample, intermediates = model.sample(None, batch_size, is_training=True)
-
+        x_0 = torch.randn(shape).to("cuda")
+        sample = sample_from_model(model.model.flowmatching_model, x_0, opt)[-1]
+        # sample, intermediates = model.sample(None, batch_size, is_training=True)
         t1 = time.time()
 
     x_sample = model.decode_first_stage(sample)
@@ -73,50 +102,35 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     print(f'Throughput for this batch: {log["throughput"]}')
     return log
 
-def run(model, logdir, batch_size=50, n_samples=50000, nplog=None):
-
+def run(model, logdir, opt):
     tstart = time.time()
-    n_saved = len(glob.glob(os.path.join(logdir,'*.png')))-1
+    n_saved = len(glob.glob(os.path.join(logdir,'*.png')))
     # path = logdir
     if model.cond_stage_model is None:
-        all_images = []
-
-        print(f"Running unconditional sampling for {n_samples} samples")
-        for _ in trange(n_samples // batch_size, desc="Sampling Batches (unconditional)"):
-            logs = make_convolutional_sample(model, batch_size=batch_size)
+        print(f"Running unconditional sampling for {opt.n_samples} samples")
+        for _ in trange(opt.n_samples // opt.batch_size, desc="Sampling Batches (unconditional)"):
+            logs = make_convolutional_sample(model, opt)
             n_saved = save_logs(logs, logdir, n_saved=n_saved, key="sample")
-            all_images.extend([custom_to_np(logs["sample"])])
-            if n_saved >= n_samples:
+            print("NFE: {}".format(model.model.flowmatching_model.nfe))
+            if n_saved >= opt.n_samples:
                 print(f'Finish after generating {n_saved} samples')
                 break
-        all_img = np.concatenate(all_images, axis=0)
-        all_img = all_img[:n_samples]
-        shape_str = "x".join([str(x) for x in all_img.shape])
-        nppath = os.path.join(nplog, f"{shape_str}-samples.npz")
-        np.savez(nppath, all_img)
-
     else:
        raise NotImplementedError('Currently only sampling for unconditional models supported.')
-
+    
     print(f"sampling of {n_saved} images finished in {(time.time() - tstart) / 60.:.2f} minutes.")
 
 
-def save_logs(logs, path, n_saved=0, key="sample", np_path=None):
+def save_logs(logs, path, n_saved=0, key="sample"):
     for k in logs:
         if k == key:
             batch = logs[key]
-            if np_path is None:
-                for x in batch:
-                    img = custom_to_pil(x)
-                    imgpath = os.path.join(path, f"{key}_{n_saved:06}.png")
-                    img.save(imgpath)
-                    n_saved += 1
-            else:
-                npbatch = custom_to_np(batch)
-                shape_str = "x".join([str(x) for x in npbatch.shape])
-                nppath = os.path.join(np_path, f"{n_saved}-{shape_str}-samples.npz")
-                np.savez(nppath, npbatch)
-                n_saved += npbatch.shape[0]
+            for x in batch:
+                img = custom_to_pil(x)
+                imgpath = os.path.join(path, f"{key}_{n_saved:06}.png")
+                img.save(imgpath)
+                n_saved += 1
+            
     return n_saved
 
 
@@ -153,6 +167,12 @@ def get_parser():
         help="the bs",
         default=10
     )
+    parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
+    parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
+    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", "euler", "midpoint", "rk4"])
+    parser.add_argument('--step_size', type=float, default=0.01, help='step_size')
+    parser.add_argument('--perturb', action='store_true', default=False)
+    
     parser.add_argument('--compute_fid', action='store_true', default=False,
                             help='whether or not compute FID')
     return parser
@@ -166,7 +186,7 @@ def load_model_from_config(config, sd):
     return model
 
 
-def load_model(config, ckpt, gpu, eval_mode):
+def load_model(config, ckpt):
     if ckpt:
         print(f"Loading model from {ckpt}")
         pl_sd = torch.load(ckpt, map_location="cpu")
@@ -177,7 +197,7 @@ def load_model(config, ckpt, gpu, eval_mode):
     print(config)
     model = load_model_from_config(config.model,
                                    pl_sd["state_dict"])
-
+    model.eval()
     return model, global_step
 
 
@@ -216,28 +236,20 @@ if __name__ == "__main__":
     cli = OmegaConf.from_dotlist(unknown)
     config = OmegaConf.merge(*configs, cli)
 
-    gpu = True
-    eval_mode = True
-
     if opt.logdir != "none":
         locallog = logdir.split(os.sep)[-1]
         if locallog == "": locallog = logdir.split(os.sep)[-2]
         print(f"Switching logdir from '{logdir}' to '{os.path.join(opt.logdir, locallog)}'")
         logdir = os.path.join(opt.logdir, locallog)
-
-    print(config)
-
-    model, global_step = load_model(config, ckpt, gpu, eval_mode)
+        
+    model, global_step = load_model(config, ckpt)
     print(f"global step: {global_step}")
     print(75 * "=")
-    print("logging to:")
+    
     logdir = os.path.join(logdir, "samples", f"{global_step:08}", now)
     imglogdir = os.path.join(logdir, "img")
-    numpylogdir = os.path.join(logdir, "numpy")
-
     os.makedirs(imglogdir)
-    os.makedirs(numpylogdir)
-    print(logdir)
+    print("logging to: {}".format(imglogdir))
     print(75 * "=")
 
     # write config out
@@ -249,11 +261,11 @@ if __name__ == "__main__":
     print(sampling_conf)
 
 
-    run(model, imglogdir, n_samples=opt.n_samples, batch_size=opt.batch_size, nplog=numpylogdir)
+    run(model, imglogdir, opt)
     
     if opt.compute_fid:
         paths = [imglogdir, "pytorch_fid/celeba_256_stat.npy"]
-        kwargs = {'batch_size': 100, 'device': "cuda", 'dims': 2048}
+        kwargs = {'batch_size': 50, 'device': "cuda", 'dims': 2048}
         fid = calculate_fid_given_paths(paths=paths, **kwargs)
         print('FID = {}'.format(fid))
 
