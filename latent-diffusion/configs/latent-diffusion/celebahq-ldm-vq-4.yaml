@@ -1,12 +1,12 @@
 model:
-  base_learning_rate: 2.0e-06
+  base_learning_rate: 1.0e-05
   target: ldm.models.flow.flow_matching.LatentFlowMatching
   params:
-    log_every_t: 200
+    log_every_t: 400
     first_stage_key: image
     image_size: 64
     channels: 3
-    monitor: val/loss
+    monitor: train/loss
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.UNetModel
@@ -56,7 +56,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 30
+    batch_size: 48
     num_workers: 5
     wrap: false
     train:

@@ -804,7 +804,7 @@ class LatentFlowMatching(FlowMatching):
                 return self.model(t, x, cond)
         
         ode_func_sp = ode_func(cond, self.model)
-        fake_images = odeint(ode_func_sp, x_0, t, atol=1e-5, rtol=1e-5)
+        fake_images = odeint(ode_func_sp, x_0, t, atol=1e-8, rtol=1e-8)
         return fake_images[-1], fake_images
 
 
