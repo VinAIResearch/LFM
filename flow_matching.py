@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-
+import os, sys
+# sys.path.append("~/workspace/quandm7/CNF_FM")
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -9,7 +10,8 @@ from torch import Tensor
 from torch.distributions import Normal
 from tqdm import tqdm
 from typing import *
-from zuko.zuko.utils import odeint
+
+from zuko.utils import odeint
 
 
 class MLP(nn.Sequential):
@@ -86,8 +88,8 @@ class FlowMatchingLoss(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         t = torch.rand_like(x[..., 0]).unsqueeze(-1)
         z = torch.randn_like(x)
-        y = (1 - t) * x + (1e-4 + (1 - 1e-4) * t) * z
-        u = (1 - 1e-4) * z - x
+        y = (1 - t) * x + (1e-15 + (1 - 1e-15) * t) * z
+        u = (1 - 1e-15) * z - x + 0.1 * (z-x)/t
         
         t, y, u = t.to("cuda"), y.to("cuda"), u.to("cuda")
 
@@ -122,6 +124,6 @@ if __name__ == '__main__':
 
     # Log-likelihood
     with torch.no_grad():
-        log_p = flow.log_prob(data[:4].to("cuda"))
+        log_p = flow.log_prob(data.to("cuda"))
 
-    print(log_p)
+    print(-log_p.mean())
