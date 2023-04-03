@@ -3,28 +3,7 @@ import torch.nn as nn
 import functools
 
 from models.score_sde_pytorch.layerspp import ResnetBlockBigGANpp, conv3x3
-from utils.util import add_dimensions
 from utils.util import get_resize_fn
-
-
-def get_gamma(t, sde_config):
-    alpha_t = (-.5 * (sde_config.beta_min * t + .5 *
-               sde_config.beta_d * t ** 2.)).exp()
-    return (1. - alpha_t ** 2.).sqrt() / alpha_t
-
-
-class GENIEModel(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-
-        self.config = config
-        self.all_modules = nn.ModuleList([GENIEPredictionHead(config.genie_model)])
-
-    def forward(self, x, t, eps, xemb, temb, context=None):
-        gamma = add_dimensions(get_gamma(t, self.config.sde), len(x.shape) - 1)
-        h = self.all_modules[0](x, eps, xemb, temb, context=context)
-        head1, head2, head3 = torch.chunk(h, 3, dim=1)
-        return -head1 / gamma + head2 * gamma / (1. + gamma ** 2.) + head3 / (gamma * (1. + gamma ** 2.))
 
 
 class GENIEPredictionHead(nn.Module):

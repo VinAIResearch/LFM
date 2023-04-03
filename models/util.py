@@ -7,7 +7,7 @@ from models.pytorch_diffusion.model import Model
 from models.score_sde_pytorch.ncsnpp import NCSNpp
 from models.score_sde_pytorch.layerspp import GaussianFourierProjection
 from models.score_sde_pytorch.layers import default_init
-from models.genie import GENIEModel
+from models.genie import GENIEPredictionHead
 
     
 def get_flow_model(config):
@@ -35,7 +35,7 @@ def get_flow_model(config):
     
 
 def get_genie_model(config):
-    return GENIEModel(config)
+    return GENIEPredictionHead(config)
 
 
 def get_fourier_embedding(nf, fourier_scale):

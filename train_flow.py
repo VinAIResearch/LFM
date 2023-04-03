@@ -34,7 +34,6 @@ def broadcast_params(params):
         dist.broadcast(param.data, src=0)
 
 def sample_from_model(model, x_0):
-    # t = np.linspace(1., 0., num=num_timesteps)
     t = torch.tensor([1., 0.], device="cuda")
     fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5)
     return fake_image
@@ -159,7 +158,7 @@ def train(rank, gpu, args):
         
         if rank == 0:
             rand = torch.randn_like(x_1)
-            fake_sample = sample_from_model(model, rand, args.num_timesteps)[-1]
+            fake_sample = sample_from_model(model, rand)[-1]
             
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True)
             

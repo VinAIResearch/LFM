@@ -9,16 +9,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.cuda.amp import autocast, GradScaler
 from torchvision.utils import make_grid
 from torch.autograd.functional import jvp
-
 from models.util import get_flow_model, get_genie_model
-from models.score_sde_pytorch.ema import ExponentialMovingAverage as EMA
-
 from utils.util import set_seeds, make_dir
 from utils.optim import get_optimizer
 from utils.image_dataset import ImageFolderDataset
 from sampler import get_sampler
 from dnnlib.util import open_url
-from eval import compute_fid
+from genie_fid.eval import compute_fid
 
 
 def save_checkpoint(ckpt_path, state):
@@ -28,29 +25,21 @@ def save_checkpoint(ckpt_path, state):
     torch.save(saved_state, ckpt_path)
 
 
-def _get_flow_model(config, local_rank):
+def _get_flow_model(config):
     model_config = config.flow_model
     model = get_flow_model(model_config).to(config.setup.device)
-
-    model = DDP(model, device_ids=[local_rank])
     state = torch.load(model_config.ckpt_path, map_location=config.setup.device)
     logging.info(model.load_state_dict(state['model'], strict=True))
-    ema = EMA(
-        model.parameters(), decay=model_config.ema_rate)
-    ema.load_state_dict(state['ema'])
-    ema.copy_to(model.parameters())
     model.eval()
-    return model.module
+    return model
 
 
 def get_state(config, local_rank, mode):
     model_config = config.genie_model
     model = get_genie_model(config).to(config.setup.device)
-
     model = DDP(model, device_ids=[local_rank])
     optimizer = get_optimizer(config.optim.optimizer, model.parameters(), **config.optim.params)
     step = 0
-
     if mode == 'continue':
         loaded_state = torch.load(
             model_config.ckpt_path, map_location=config.setup.device)
@@ -63,18 +52,13 @@ def get_state(config, local_rank, mode):
 
 def loss_fn(config, flow_model, genie_model, x, y=None):
     t = torch.rand(x.shape[0], device=config.setup.device) * (1.0 - config.train.eps) + config.train.eps
-        
     eps = torch.randn_like(x, device=x.device)
-
     perturbed_data = t * x + (1 - t) * eps
     # could we do it in single forward pass, read the jvp function
-    # eps_pred, xemb, temb = flow_model(t, perturbed_data, y=y, return_embeddings=True)
-
-    (eps_pred, xemb, temb), deps_dt_backprop = jvp(lambda t: flow_model(t, perturbed_data, y=y, return_embeddings=True), t, v=torch.ones_like(t, device=t.device))[1]
-
-    deps_dgamma = genie_model(perturbed_data, t, eps, xemb, temb)
-
-    loss = (deps_dgamma - deps_dt_backprop) ** 2
+    _, xemb, temb = flow_model(t, perturbed_data, y=y, return_emb=True)
+    deps_dt_backprop = jvp(lambda t: flow_model(t, perturbed_data, y=y), t, v=torch.ones_like(t, device=t.device))[1]
+    deps_dt= genie_model(perturbed_data, t, eps, xemb, temb)
+    loss = (deps_dt - deps_dt_backprop) ** 2
     loss = torch.sum(loss.reshape(loss.shape[0], -1), dim=-1)
     return loss
 
@@ -90,7 +74,6 @@ def sample_batch(sampling_fn, sampling_shape, device):
 def training(config, workdir, mode):
     local_rank = config.setup.local_rank
     global_rank = config.setup.global_rank
-    global_size = config.setup.global_size
     set_seeds(global_rank, config.train.seed)
 
     torch.cuda.device(local_rank)
@@ -103,7 +86,7 @@ def training(config, workdir, mode):
         make_dir(checkpoint_dir)
     dist.barrier()
 
-    flow_model = _get_flow_model(config, local_rank)
+    flow_model = _get_flow_model(config)
     model, optimizer, step = get_state(config, local_rank, mode)
     state = dict(model=model, optimizer=optimizer, step=step)
 
@@ -129,7 +112,7 @@ def training(config, workdir, mode):
         dataset=dataset, sampler=dataset_sampler, shuffle=False, batch_size=config.train.batch_size, **config.data.dataloader_params)
 
     scaler = GradScaler() if config.train.autocast else None
-
+    # setup learning scheduler
     if config.optim.decay_scheduler is not None:
         if config.train.n_warmup_iters > 0:
             raise ValueError('For now, let us not combine warmup and decay.')
@@ -146,7 +129,6 @@ def training(config, workdir, mode):
             if state['step'] % config.train.snapshot_freq == 0 and state['step'] >= config.train.snapshot_threshold and config.setup.global_rank == 0:
                 logging.info(
                     'Saving snapshot checkpoint and sampling single batch at iteration %d.' % state['step'])
-
                 model.eval()
                 with torch.no_grad():
                     x = sample_batch(sampling_fn, sampling_shape, device=config.setup.device)
@@ -168,7 +150,6 @@ def training(config, workdir, mode):
                 with torch.no_grad():
                     fid_list = compute_fid(config.train.fid_samples, config.setup.global_size, sampling_shape, sampling_fn, inception_model,
                                              config.data.fid_stats, config.setup.device, config.data.num_classes)
-
                     if config.setup.global_rank == 0:
                         for i, fid in enumerate(fid_list):
                             logging.info('FID (%d) at step %d: %.6f' % (i + 1, state['step'], fid))
