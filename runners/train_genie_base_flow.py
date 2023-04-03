@@ -12,7 +12,7 @@ from torch.autograd.functional import jvp
 from models.util import get_flow_model, get_genie_model
 from utils.util import set_seeds, make_dir
 from utils.optim import get_optimizer
-from utils.image_dataset import ImageFolderDataset
+from datasets_prep import get_dataset
 from sampler import get_sampler
 from dnnlib.util import open_url
 from genie_fid.eval import compute_fid
@@ -100,13 +100,12 @@ def training(config, workdir, mode):
                       config.data.image_size,
                       config.data.image_size)
     sampling_fn = get_sampler(config, flow_model, model)
-
+    # loading inception model to compute fid
     with open_url('https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/metrics/inception-2015-12-05.pkl') as f:
         inception_model = pickle.load(f).to(config.setup.device)
         inception_model.eval()
-
-    dataset = ImageFolderDataset(
-        config.data.path, config.data.image_size, **config.data.dataset_params)
+    # loading data
+    dataset = get_dataset(config.data)
     dataset_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     dataset_loader = torch.utils.data.DataLoader(
         dataset=dataset, sampler=dataset_sampler, shuffle=False, batch_size=config.train.batch_size, **config.data.dataloader_params)

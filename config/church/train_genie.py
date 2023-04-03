@@ -30,7 +30,6 @@ def get_config():
     config.sde.beta_min = .1
     config.sde.beta_d = 19.9
     # flow matching model config
-    config.flow_model.ema_rate = .9999
     config.flow_model.num_in_channels = config.data.num_channels
     config.flow_model.num_out_channels = config.data.num_channels
     config.flow_model.nf = 128
@@ -40,7 +39,6 @@ def get_config():
     config.flow_model.resamp_with_conv = True
     config.flow_model.dropout = 0.
     config.flow_model.image_size = config.data.image_size
-    config.flow_model.M = 1.
     config.flow_model.ckpt_path = 'work_dir/church/checkpoint_300000.pth'
     # genie model config
     config.genie_model.num_in_channels = config.diffusion_model.nf + 2 * config.data.num_channels
@@ -49,7 +47,7 @@ def get_config():
     config.genie_model.skip_rescale = True
     config.genie_model.init_scale = 0.
     config.genie_model.dropout = 0.
-    config.genie_model.num_out_channels = 3 * config.data.num_channels
+    config.genie_model.num_out_channels = config.data.num_channels
     config.genie_model.apply_act_before_res = False
     config.genie_model.num_res_blocks = 1
     config.genie_model.normalize_xemb = True
