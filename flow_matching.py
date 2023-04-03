@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
-from sklearn.datasets import make_moons
+from sklearn.datasets import make_moons, make_circles
 from torch import Tensor
 from torch.distributions import Normal
 from tqdm import tqdm
 from typing import *
-
-from zuko.utils import odeint
+from torchdiffeq import odeint
+# from zuko.utils import odeint
 
 
 class MLP(nn.Sequential):
@@ -54,10 +54,13 @@ class CNF(nn.Module):
         return self.net(torch.cat((t, x), dim=-1))
 
     def encode(self, x: Tensor) -> Tensor:
-        return odeint(self, x, 0.0, 1.0, phi=self.parameters())
+        t = torch.tensor([1., 0.], device="cuda")
+        return odeint(self, x, t, atol = 1e-5, rtol = 1e-5)
 
     def decode(self, z: Tensor) -> Tensor:
-        return odeint(self, z, 1.0, 0.0, phi=self.parameters())
+        t = torch.tensor([0., 1.], device="cuda")
+        return odeint(self, z, t, atol = 1e-5, rtol = 1e-5)
+        # return odeint(self, z, 0., 1., phi=self.parameters())
 
     def log_prob(self, x: Tensor) -> Tensor:
         I = torch.eye(x.shape[-1]).to(x)
@@ -88,12 +91,14 @@ class FlowMatchingLoss(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         t = torch.rand_like(x[..., 0]).unsqueeze(-1)
         z = torch.randn_like(x)
-        y = (1 - t) * x + (1e-15 + (1 - 1e-15) * t) * z
-        u = (1 - 1e-15) * z - x + 0.1 * (z-x)/t
+        # y = (1 - t) * x +  t * z
+        # u =  z - x
         
+        y = (1-t**2)*z + t**2 * x
+        u = 2*(1+0.05*t)*(x-z)
         t, y, u = t.to("cuda"), y.to("cuda"), u.to("cuda")
 
-        return (self.v(t.squeeze(-1), y) - u).square().mean()
+        return (self.v(t.squeeze(-1)**2, y) - u).square().mean()
 
 
 if __name__ == '__main__':
@@ -104,20 +109,27 @@ if __name__ == '__main__':
     optimizer = torch.optim.AdamW(flow.parameters(), lr=1e-3)
 
     data, _ = make_moons(4096, noise=0.05)
+    # data, _ = make_circles(4096, noise=0.05)
     data = torch.from_numpy(data).float()
-
+    losses = []
     for epoch in tqdm(range(4096), ncols=88):
         subset = torch.randint(0, len(data), (256,))
         x = data[subset].to("cuda")
 
         optimizer.zero_grad()
-        loss(x).backward()
+        loss_t = loss(x)
+        loss_t.backward()
         optimizer.step()
+        losses.append(loss_t.item())
+        
+    plt.plot(losses)
+    plt.savefig('loss.png',dpi=300)
+    plt.figure()
 
     # Sampling
     with torch.no_grad():
         z = torch.randn(4096, 2).to("cuda")
-        x = flow.decode(z).to("cpu").numpy()
+        x = flow.decode(z).to("cpu").numpy()[-1]
 
     plt.hist2d(x[:, 0], x[:, 1], bins=64)
     plt.savefig('moons.png', dpi=300)

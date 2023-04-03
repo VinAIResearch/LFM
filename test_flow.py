@@ -6,19 +6,16 @@
 # ---------------------------------------------------------------
 import argparse
 import torch
-import numpy as np
-
 import os
 from torchdiffeq import odeint_adjoint as odeint
-
+from models.util import get_flow_model
 import torchvision
-from improved_diffusion.unet import UNetModel
 from pytorch_fid.fid_score import calculate_fid_given_paths
 
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
 FIXER_SOLVER = ["euler", "rk4", "midpoint"]
 
-def sample_from_model(model, x_0, num_timesteps, args):
+def sample_from_model(model, x_0, args):
     # t = np.linspace(1., 0., num=num_timesteps)
     if args.method in ADAPTIVE_SOLVER:
         options = {
@@ -45,48 +42,7 @@ def sample_from_model(model, x_0, num_timesteps, args):
                         )
     return fake_image
 
-def create_model(
-    image_size,
-    num_channels,
-    num_res_blocks,
-    class_cond,
-    use_checkpoint,
-    attention_resolutions,
-    num_heads,
-    num_heads_upsample,
-    use_scale_shift_norm,
-    dropout,
-):
-    if image_size == 256:
-        channel_mult = (1, 1, 2, 2, 4, 4)
-    elif image_size == 64:
-        channel_mult = (1, 2, 3, 4)
-    elif image_size == 32:
-        channel_mult = (1, 2, 2, 2)
-        num_classes = 10
-    else:
-        raise ValueError(f"unsupported image size: {image_size}")
 
-    # attention_ds = []
-    # for res in attention_resolutions.split(","):
-    #     attention_ds.append(image_size // int(res))
-
-    return UNetModel(
-        in_channels=3,
-        model_channels=num_channels,
-        out_channels=3,
-        num_res_blocks=num_res_blocks,
-        attention_resolutions=attention_resolutions,
-        dropout=dropout,
-        channel_mult=channel_mult,
-        num_classes= num_classes if class_cond else None,
-        use_checkpoint=use_checkpoint,
-        num_heads=num_heads,
-        num_heads_upsample=num_heads_upsample,
-        use_scale_shift_norm=use_scale_shift_norm,
-    )
-
-#%%
 def sample_and_test(args):
     torch.manual_seed(42)
     device = 'cuda:0'
@@ -103,19 +59,9 @@ def sample_and_test(args):
     to_range_0_1 = lambda x: (x + 1.) / 2.
 
     
-    model =  create_model(image_size = args.image_size,
-        num_channels = args.num_channels,
-        num_res_blocks = args.num_res_blocks,
-        class_cond = args.class_cond,
-        use_checkpoint = False,
-        attention_resolutions = args.attn_resolutions,
-        num_heads = 4,
-        num_heads_upsample = -1,
-        use_scale_shift_norm = True,
-        dropout = args.dropout).to(device)
-    
+    model =  get_flow_model(args).to(device)
     ckpt = torch.load('./saved_info/flow_matching/{}/{}/model_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
-    
+    print("Finish loading model")
     #loading weights from ddp in single gpu
     for key in list(ckpt.keys()):
         ckpt[key[7:]] = ckpt.pop(key)
@@ -133,7 +79,7 @@ def sample_and_test(args):
         for i in range(iters_needed):
             with torch.no_grad():
                 x_0 = torch.randn(args.batch_size, 3, args.image_size, args.image_size).to(device)
-                fake_sample = sample_from_model(model, x_0, args.num_timesteps, args)[-1]
+                fake_sample = sample_from_model(model, x_0, args)[-1]
                 fake_sample = to_range_0_1(fake_sample)
                 for j, x in enumerate(fake_sample):
                     index = i * args.batch_size + j 
@@ -147,7 +93,7 @@ def sample_and_test(args):
         print('FID = {}'.format(fid))
     else:
         x_0 = torch.randn(args.batch_size, 3,args.image_size, args.image_size).to(device)
-        fake_sample = sample_from_model(model, x_0, args.num_timesteps, args)[-1]
+        fake_sample = sample_from_model(model, x_0, args)[-1]
         fake_sample = to_range_0_1(fake_sample)
         print("NFE: {}".format(model.nfe))
         torchvision.utils.save_image(fake_sample, './samples_{}_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol, model.nfe))
@@ -163,31 +109,46 @@ if __name__ == '__main__':
     parser.add_argument('--compute_fid', action='store_true', default=False,
                             help='whether or not compute FID')
     parser.add_argument('--epoch_id', type=int,default=1000)
-    parser.add_argument('--num_channels', type=int, default=256,
+
+    parser.add_argument('--image_size', type=int, default=32,
+                            help='size of image')
+    parser.add_argument('--num_in_channels', type=int, default=3,
+                            help='in channel image')
+    parser.add_argument('--num_out_channels', type=int, default=3,
+                            help='in channel image')
+    parser.add_argument('--nf', type=int, default=256,
                             help='channel of image')
     parser.add_argument('--centered', action='store_false', default=True,
                             help='-1,1 scale')
-
+    parser.add_argument("--resamp_with_conv", type=bool, default=True)
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
+    parser.add_argument('--num_heads', type=int, default=4,
+                            help='number of head')
+    parser.add_argument('--num_head_upsample', type=int, default=-1,
+                            help='number of head upsample')
+    parser.add_argument('--num_head_channels', type=int, default=-1,
+                            help='number of head channels')
     parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,),
                             help='resolution of applying attention')
+    parser.add_argument('--ch_mult', nargs='+', type=int, default=(1,2,2,2),
+                            help='channel mult')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
+    parser.add_argument('--num_classes', type=int, default=None,
+                            help='num classes')
+    parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
+    parser.add_argument("--resblock_updown", type=bool, default=False)
+    parser.add_argument("--use_new_attention_order", type=bool, default=False)
     
-    #geenrator and training
+    #######################################
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--real_img_dir', default='./pytorch_fid/cifar10_train_stat.npy', help='directory to real images for FID computation')
-    parser.add_argument("--class_cond", type=bool, default=False)
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
-    parser.add_argument('--image_size', type=int, default=32,
-                            help='size of image')
-
     parser.add_argument('--num_timesteps', type=int, default=200)
-    
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
     
-    
+    # sampling argument
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", "euler", "midpoint", "rk4"])
