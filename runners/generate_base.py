@@ -4,31 +4,20 @@ import torch.distributed as dist
 import numpy as np
 import os
 from PIL import Image
-from torch.nn.parallel import DistributedDataParallel as DDP
 
-from models.util import get_diffusion_model, get_genie_model
-from models.score_sde_pytorch.ema import ExponentialMovingAverage as EMA
+from models.util import get_flow_model, get_genie_model
 from utils.util import set_seeds, make_dir
-from wrappers import EpsPredictor, VPredictor
 from sampler import get_sampler
 
-def get_model(config, local_rank, genie=False):
+def get_model(config, genie=False):
     if genie:
         model_config = config.genie_model
         model = get_genie_model(config).to(config.setup.device)
     else:
-        model_config = config.diffusion_model
-        model = get_diffusion_model(model_config).to(config.setup.device)
-
-    model = DDP(model, device_ids=[local_rank])
+        model_config = config.flow_model
+        model = get_flow_model(model_config).to(config.setup.device)
     state = torch.load(model_config.ckpt_path, map_location=config.setup.device)
     logging.info(model.load_state_dict(state['model'], strict=True))
-    if 'ema_rate' in model_config.keys():
-        ema = EMA(
-            model.parameters(), decay=model_config.ema_rate)
-        ema.load_state_dict(state['ema'])
-        ema.copy_to(model.parameters())
-    
     model.eval()
     return model
 
@@ -80,22 +69,17 @@ def evaluation(config, workdir):
         make_dir(sample_dir)
     dist.barrier()
 
-    diffusion_model = get_model(config, local_rank)
+    flow_model = get_model(config, local_rank)
     if 'genie_model' in config.keys() and config.sampler.name == 'ttm2':
         genie_model = get_model(config, local_rank, genie=True)
     else:
         genie_model = None
 
-    if config.diffusion_model.pred == 'eps':
-        diffusion_wrapper = EpsPredictor(diffusion_model, config.diffusion_model.M, config.sde.beta_min, config.sde.beta_d)
-    elif config.diffusion_model.pred == 'v':
-        diffusion_wrapper = VPredictor(diffusion_model, config.diffusion_model.M, config.sde.beta_min, config.sde.beta_d)
-
     sampling_shape = (config.sampler.batch_size,
                       config.data.num_channels,
                       config.data.image_size,
                       config.data.image_size)
-    sampling_fn = get_sampler(config, diffusion_wrapper, genie_model)
+    sampling_fn = get_sampler(config, flow_model, genie_model)
 
     counter = (config.test.n_samples // (sampling_shape[0] * global_size) + 1) * sampling_shape[0] * global_rank
     for _ in range(config.test.n_samples // (sampling_shape[0] * global_size) + 1):

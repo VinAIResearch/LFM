@@ -54,53 +54,59 @@ def set_logger(gfile_stream):
 
 
 def main(config):
-    workdir = os.path.join(config.setup.root_folder, config.setup.workdir)
+   
+    if "genie" in config.setup.runner:
+        exp_path = "./saved_info/"
+        exp_path = os.path.join(exp_path, "_".join(config.setup.runner.split("_")[1:]), config.data.name, config.exp)
+    else:
+        exp_path = "./saved_info/flow_matching/{}/{}".format(config.data.name, config.exp)
 
     if config.setup.mode == 'train' or config.setup.mode == 'continue':
         if config.setup.global_rank == 0:
             if config.setup.mode == 'train':
-                make_dir(workdir)
-                gfile_stream = open(os.path.join(workdir, 'stdout.txt'), 'w')
+                if not os.path.exists(exp_path):
+                    os.makedirs(exp_path)
+                gfile_stream = open(os.path.join(exp_path, 'stdout.txt'), 'w')
             else:
-                if not os.path.exists(workdir):
+                if not os.path.exists(exp_path):
                     raise ValueError('Working directoy does not exist.')
-                gfile_stream = open(os.path.join(workdir, 'stdout.txt'), 'a')
-
+                gfile_stream = open(os.path.join(exp_path, 'stdout.txt'), 'a')
             set_logger(gfile_stream)
             logging.info(config)
 
         if config.setup.runner == 'train_diffusion_base':
             from runners import train_diffusion_base
-            train_diffusion_base.training(config, workdir, config.setup.mode)
+            train_diffusion_base.training(config, exp_path, config.setup.mode)
         elif config.setup.runner == 'train_diffusion_upsampler':
             from runners import train_diffusion_upsampler
-            train_diffusion_upsampler.training(
-                config, workdir, config.setup.mode)
+            train_diffusion_upsampler.training(config, exp_path, config.setup.mode)
         elif config.setup.runner == 'train_genie_base':
             from runners import train_genie_base
-            train_genie_base.training(config, workdir, config.setup.mode)
+            train_genie_base.training(config, exp_path, config.setup.mode)
         elif config.setup.runner == 'train_genie_upsampler':
             from runners import train_genie_upsampler
-            train_genie_upsampler.training(config, workdir, config.setup.mode)
+            train_genie_upsampler.training(config, exp_path, config.setup.mode)
         else:
             raise NotImplementedError('Runner is not yet implemented.')
 
     elif config.setup.mode == 'eval':
         if config.setup.global_rank == 0:
-            make_dir(workdir)
-            gfile_stream = open(os.path.join(workdir, 'stdout.txt'), 'w')
+            exp_path = os.path.join(exp_path, "generated_sample")
+            if not os.path.exists(exp_path):
+                os.makedirs(exp_path)
+            gfile_stream = open(os.path.join(exp_path, 'stdout.txt'), 'w')
             set_logger(gfile_stream)
             logging.info(config)
 
         if config.setup.runner == 'generate_base':
             from runners import generate_base
-            generate_base.evaluation(config, workdir)
+            generate_base.evaluation(config, exp_path)
         elif config.setup.runner == 'generate_base_with_guidance':
             from runners import generate_base_with_guidance
-            generate_base_with_guidance.evaluation(config, workdir)
+            generate_base_with_guidance.evaluation(config, exp_path)
         elif config.setup.runner == 'generate_upsampler':
             from runners import generate_upsampler
-            generate_upsampler.evaluation(config, workdir)
+            generate_upsampler.evaluation(config, exp_path)
         else:
             raise NotImplementedError('Runner is not yet implemented.')
 
@@ -111,8 +117,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', required=True)
     parser.add_argument(
         '--mode', choices=['train', 'continue', 'eval'], required=True)
-    parser.add_argument('--workdir', required=True)
-    parser.add_argument('--root_folder', default='.')
+    parser.add_argument('--exp', required=True)
     parser.add_argument('--n_gpus_per_node', type=int, default=1)
     parser.add_argument('--n_nodes', type=int, default=1)
     parser.add_argument('--node_rank', type=int, default=0)
@@ -128,10 +133,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=None)
     parser.add_argument('--n_samples', type=int, default=None)
     parser.add_argument('--n_steps', type=int, default=None)
-    parser.add_argument('--afs', action='store_true')
-    parser.add_argument('--denoising', action='store_true')
     parser.add_argument('--quadratic_striding', action='store_true')
-    parser.add_argument('--sampler', choices=['ddim', 'ttm2'], default=None)
+    parser.add_argument('--sampler', choices=['ttm2'], default="ttm2")
     # Only used for conditional sampling while testing
     parser.add_argument('--labels', type=int, default=None)
     # Only used for upsampling
@@ -141,12 +144,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    config_fn = importlib.import_module('configs.' + args.config)
+    config_fn = importlib.import_module('config.' + args.config)
     config = config_fn.get_config()
 
     config.setup.mode = args.mode
-    config.setup.workdir = args.workdir
-    config.setup.root_folder = args.root_folder
+    config.setup.exp_path = args.exp_path
     config.setup.n_gpus_per_node = args.n_gpus_per_node
     config.setup.n_nodes = args.n_nodes
     config.setup.node_rank = args.node_rank
@@ -176,10 +178,6 @@ if __name__ == '__main__':
         config.test.n_samples = args.n_samples
     if args.n_steps is not None:
         config.sampler.n_steps = args.n_steps
-    if args.denoising:
-        config.sampler.denoising = True
-    if args.afs:
-        config.sampler.afs = True
     if args.quadratic_striding:
         config.sampler.quadratic_striding = True
     if args.sampler is not None:

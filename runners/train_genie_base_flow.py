@@ -46,7 +46,6 @@ def get_state(config, local_rank, mode):
         model.load_state_dict(loaded_state['model'], strict=False)
         optimizer.load_state_dict(loaded_state['optimizer'])
         step = loaded_state['step']
-
     return model, optimizer, step
 
 
@@ -163,7 +162,7 @@ def training(config, workdir, mode):
                     'Saving  checkpoint at iteration %d' % state['step'])
             dist.barrier()
 
-            x = (train_x.to(config.setup.device).to(torch.float32) / 127.5 - 1.)
+            x = train_x.to(config.setup.device)
             if config.data.num_classes is None:
                 y = None
             else:
