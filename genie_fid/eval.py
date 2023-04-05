@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 
-from compute_fid import calculate_frechet_distance
-from compute_fid_statistics import get_activations
+from genie_fid.compute_fid import calculate_frechet_distance
+from genie_fid.compute_fid_statistics import get_activations
 from utils.util import average_tensor
 
 
@@ -41,9 +41,12 @@ def compute_fid(n_samples, n_gpus, sampling_shape, sampler, inception_model, sta
 
     fid = []
     for stats_path in stats_paths:
-        stats = np.load(stats_path)
-        data_pools_mean = stats['mu']
-        data_pools_sigma = stats['sigma']
+        print("Loading stats path {}".format(stats_path))
+        f = np.load(stats_path, allow_pickle=True)
+        try:
+            data_pools_mean, data_pools_sigma = f['mu'][:], f['sigma'][:]
+        except:
+            data_pools_mean, data_pools_sigma = f.item()['mu'][:], f.item()['sigma'][:]
         fid.append(calculate_frechet_distance(data_pools_mean,
                    data_pools_sigma, all_pool_mean, all_pool_sigma))
     return fid

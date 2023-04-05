@@ -17,7 +17,7 @@ def get_config():
     # setup training
     config.setup.runner = 'train_genie_base'
     # data setup
-    config.data.name = "cifar10"
+    config.data.dataset = "cifar10"
     config.data.image_size = 32
     config.data.num_channels = 3
     config.data.fid_stats = ['./pytorch_fid/cifar10_train_stat.npy']
@@ -32,6 +32,7 @@ def get_config():
     config.flow_model.num_in_channels = config.data.num_channels
     config.flow_model.num_out_channels = config.data.num_channels
     config.flow_model.nf = 256
+    config.flow_model.num_classes = None
     config.flow_model.ch_mult = (1, 2, 2, 2)
     config.flow_model.num_res_blocks = 2
     config.flow_model.attn_resolutions = (16,)
@@ -39,6 +40,13 @@ def get_config():
     config.flow_model.dropout = 0.
     config.flow_model.image_size = config.data.image_size
     config.flow_model.ckpt_path = './saved_info/flow_matching/cifar10/exp_1_OT/model_1000.pth'
+    config.flow_model.num_heads = 4
+    config.flow_model.num_head_channels = -1
+    config.flow_model.num_head_upsample = -1
+    config.flow_model.use_scale_shift_norm = True
+    config.flow_model.resblock_updown = False
+    config.flow_model.use_new_attention_order = False
+    config.flow_model.num_classes = None
     # genie model config
     config.genie_model.num_in_channels = config.flow_model.nf + 2 * config.data.num_channels
     config.genie_model.fir = False

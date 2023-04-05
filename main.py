@@ -57,9 +57,9 @@ def main(config):
    
     if "genie" in config.setup.runner:
         exp_path = "./saved_info/"
-        exp_path = os.path.join(exp_path, "_".join(config.setup.runner.split("_")[1:]), config.data.name, config.exp)
+        exp_path = os.path.join(exp_path, "_".join(config.setup.runner.split("_")[1:]), config.data.dataset, config.setup.exp_path)
     else:
-        exp_path = "./saved_info/flow_matching/{}/{}".format(config.data.name, config.exp)
+        exp_path = "./saved_info/flow_matching/{}/{}".format(config.data.dataset, config.setup.exp_path)
 
     if config.setup.mode == 'train' or config.setup.mode == 'continue':
         if config.setup.global_rank == 0:
@@ -81,8 +81,8 @@ def main(config):
             from runners import train_diffusion_upsampler
             train_diffusion_upsampler.training(config, exp_path, config.setup.mode)
         elif config.setup.runner == 'train_genie_base':
-            from runners import train_genie_base
-            train_genie_base.training(config, exp_path, config.setup.mode)
+            from runners import train_genie_base_flow
+            train_genie_base_flow.training(config, exp_path, config.setup.mode)
         elif config.setup.runner == 'train_genie_upsampler':
             from runners import train_genie_upsampler
             train_genie_upsampler.training(config, exp_path, config.setup.mode)
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', required=True)
     parser.add_argument(
         '--mode', choices=['train', 'continue', 'eval'], required=True)
-    parser.add_argument('--exp', required=True)
+    parser.add_argument('--exp_path', required=True)
     parser.add_argument('--n_gpus_per_node', type=int, default=1)
     parser.add_argument('--n_nodes', type=int, default=1)
     parser.add_argument('--node_rank', type=int, default=0)

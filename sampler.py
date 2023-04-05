@@ -26,7 +26,7 @@ def get_ttm2(config, flow_model, genie_model):
         nfes = 0
         for n in range(n_steps):
             eps, xemb, temb = flow_model(ones * t[n], x, y=y, return_emb=True)
-            deps_dt = genie_model(x, ones * t[n], eps, xemb, temb)
+            deps_dt = genie_model(x, eps, xemb, temb)
             nfes += 1
             h = (t[n + 1] - t[n])
             x = x + h * eps + .5 * h ** 2. * deps_dt

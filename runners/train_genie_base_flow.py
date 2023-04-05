@@ -29,14 +29,16 @@ def _get_flow_model(config):
     model_config = config.flow_model
     model = get_flow_model(model_config).to(config.setup.device)
     state = torch.load(model_config.ckpt_path, map_location=config.setup.device)
-    logging.info(model.load_state_dict(state['model'], strict=True))
+    for key in list(state.keys()):
+        state[key[7:]] = state.pop(key)
+    logging.info(model.load_state_dict(state))
     model.eval()
     return model
 
 
 def get_state(config, local_rank, mode):
     model_config = config.genie_model
-    model = get_genie_model(config).to(config.setup.device)
+    model = get_genie_model(model_config).to(config.setup.device)
     model = DDP(model, device_ids=[local_rank])
     optimizer = get_optimizer(config.optim.optimizer, model.parameters(), **config.optim.params)
     step = 0
@@ -51,12 +53,14 @@ def get_state(config, local_rank, mode):
 
 def loss_fn(config, flow_model, genie_model, x, y=None):
     t = torch.rand(x.shape[0], device=config.setup.device) * (1.0 - config.train.eps) + config.train.eps
+    t = t.view(-1, 1, 1, 1)
     eps = torch.randn_like(x, device=x.device)
     perturbed_data = t * x + (1 - t) * eps
+    t = t.squeeze()
     # could we do it in single forward pass, read the jvp function
     _, xemb, temb = flow_model(t, perturbed_data, y=y, return_emb=True)
     deps_dt_backprop = jvp(lambda t: flow_model(t, perturbed_data, y=y), t, v=torch.ones_like(t, device=t.device))[1]
-    deps_dt= genie_model(perturbed_data, t, eps, xemb, temb)
+    deps_dt= genie_model(perturbed_data, eps, xemb, temb)
     loss = (deps_dt - deps_dt_backprop) ** 2
     loss = torch.sum(loss.reshape(loss.shape[0], -1), dim=-1)
     return loss

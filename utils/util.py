@@ -40,8 +40,6 @@ def add_dimensions(x, n_additional_dims):
 def make_dir(dir):
     if not os.path.exists(dir):
         os.makedirs(dir)
-    else:
-        raise ValueError('Directory already exists.')
 
 
 def set_seeds(rank, seed):

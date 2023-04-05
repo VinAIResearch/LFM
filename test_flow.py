@@ -7,6 +7,7 @@
 import argparse
 import torch
 import os
+import numpy as np
 from torchdiffeq import odeint_adjoint as odeint
 from models.util import get_flow_model
 import torchvision
@@ -16,7 +17,6 @@ ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
 FIXER_SOLVER = ["euler", "rk4", "midpoint"]
 
 def sample_from_model(model, x_0, args):
-    # t = np.linspace(1., 0., num=num_timesteps)
     if args.method in ADAPTIVE_SOLVER:
         options = {
             "dtype": torch.float64,
