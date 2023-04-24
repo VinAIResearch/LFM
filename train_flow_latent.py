@@ -17,10 +17,11 @@ import torch.optim as optim
 import torchvision
 from datasets_prep import get_dataset
 from models.util import get_flow_model
-
 from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
+from diffusers.models import AutoencoderKL
+
 
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
@@ -59,7 +60,15 @@ def train(rank, gpu, args):
                                                drop_last = True)
     
     model = get_flow_model(args).to(device)
+    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
+    first_stage_model = first_stage_model.eval()
+    first_stage_model.train = False
+    for param in first_stage_model.parameters():
+        param.requires_grad = False
+        
     broadcast_params(model.parameters())
+    broadcast_params(first_stage_model.parameters())
+    
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas = (args.beta1, args.beta2))
     
     if args.use_ema:
@@ -68,10 +77,12 @@ def train(rank, gpu, args):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
     
     #ddp
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=True)
-
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=False)
+    first_stage_model = nn.parallel.DistributedDataParallel(first_stage_model, device_ids=[gpu],find_unused_parameters=False)
+    
+    
     exp = args.exp
-    parent_dir = "./saved_info/flow_matching/{}".format(args.dataset)
+    parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
 
     exp_path = os.path.join(parent_dir, exp)
     if rank == 0:
@@ -100,12 +111,16 @@ def train(rank, gpu, args):
         for iteration, (x, y) in enumerate(data_loader):
             x_1 = x.to(device, non_blocking=True)
             model.zero_grad()
+            encoder_posterior = first_stage_model.encode(x_1, return_dict=True)[0]
+            z_1 = encoder_posterior.sample()
+            z_1 = z_1.to(device) * args.scale_factor
+            
             #sample t
-            t = torch.rand((x_1.size(0),) , device=device)
+            t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
-            x_0 = torch.randn_like(x_1)
-            v_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
-            u = (1 - 1e-5) * x_0 - x_1
+            z_0 = torch.randn_like(z_1)
+            v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
+            u = (1 - 1e-5) * z_0 - z_1
             
             loss = F.mse_loss(model(t.squeeze(), v_t), u)
             loss.backward()
@@ -120,9 +135,9 @@ def train(rank, gpu, args):
             scheduler.step()
         
         if rank == 0:
-            rand = torch.randn_like(x_1)
+            rand = torch.randn_like(z_1)
             fake_sample = sample_from_model(model, rand)[-1]
-            
+            fake_sample = first_stage_model.decode(fake_sample / 0.18215).sample
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True)
             
             if args.save_content:
@@ -166,6 +181,8 @@ if __name__ == '__main__':
     parser.add_argument('--resume', action='store_true',default=False)
     
     parser.add_argument('--image_size', type=int, default=32,
+                            help='size of image')
+    parser.add_argument('--scale_factor', type=float, default=0.18215,
                             help='size of image')
     parser.add_argument('--num_in_channels', type=int, default=3,
                             help='in channel image')

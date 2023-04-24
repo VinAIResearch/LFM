@@ -91,8 +91,6 @@ class FlowMatchingLoss(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         t = torch.rand_like(x[..., 0]).unsqueeze(-1)
         z = torch.randn_like(x)
-        # y = (1 - t) * x +  t * z
-        # u =  z - x
         
         y = (1-t**2)*z + t**2 * x
         u = 2*(1+0.05*t)*(x-z)
