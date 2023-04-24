@@ -10,3 +10,4 @@ generated_samples/
 __MACOSX/
 logs/
 *lmdb
+stabilityai/

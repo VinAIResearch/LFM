@@ -11,7 +11,7 @@ from models.genie import GENIEPredictionHead
 
     
 def get_flow_model(config):
-    model = UNetModel(image_size=config.image_size,
+    model = UNetModel(image_size=config.image_size//8,
                       in_channels=config.num_in_channels,
                       model_channels=config.nf,
                       out_channels=config.num_out_channels,

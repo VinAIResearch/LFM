@@ -55,4 +55,6 @@ class LMDBDataset(data.Dataset):
         return img, target
 
     def __len__(self):
-        return num_samples(self.name, self.train)
+        with self.data_lmdb.begin() as txn:
+            length = txn.stat()['entries']
+        return length

@@ -61,6 +61,7 @@ def train(rank, gpu, args):
     
     model = get_flow_model(args).to(device)
     first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
+    
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
     for param in first_stage_model.parameters():
@@ -78,7 +79,7 @@ def train(rank, gpu, args):
     
     #ddp
     model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=False)
-    first_stage_model = nn.parallel.DistributedDataParallel(first_stage_model, device_ids=[gpu],find_unused_parameters=False)
+    # first_stage_model = nn.parallel.DistributedDataParallel(first_stage_model, device_ids=[gpu],find_unused_parameters=False)
     
     
     exp = args.exp
@@ -114,7 +115,6 @@ def train(rank, gpu, args):
             encoder_posterior = first_stage_model.encode(x_1, return_dict=True)[0]
             z_1 = encoder_posterior.sample()
             z_1 = z_1.to(device) * args.scale_factor
-            
             #sample t
             t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
@@ -162,7 +162,7 @@ def train(rank, gpu, args):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6021'
+    os.environ['MASTER_PORT'] = '6023'
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
