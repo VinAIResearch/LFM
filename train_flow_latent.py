@@ -21,7 +21,7 @@ from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
 from diffusers.models import AutoencoderKL
-
+from omegaconf import OmegaConf
 
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
@@ -32,7 +32,7 @@ def broadcast_params(params):
 
 def sample_from_model(model, x_0):
     t = torch.tensor([1., 0.], device="cuda")
-    fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5)
+    fake_image = odeint(model, x_0, t, atol=1e-8, rtol=1e-8)
     return fake_image
 
 #%%
@@ -68,9 +68,8 @@ def train(rank, gpu, args):
         param.requires_grad = False
         
     broadcast_params(model.parameters())
-    broadcast_params(first_stage_model.parameters())
     
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, betas = (args.beta1, args.beta2))
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
     
     if args.use_ema:
         optimizer = EMA(optimizer, ema_decay=args.ema_decay)
@@ -79,16 +78,17 @@ def train(rank, gpu, args):
     
     #ddp
     model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=False)
-    # first_stage_model = nn.parallel.DistributedDataParallel(first_stage_model, device_ids=[gpu],find_unused_parameters=False)
     
     
     exp = args.exp
     parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
-
+        
     exp_path = os.path.join(parent_dir, exp)
     if rank == 0:
         if not os.path.exists(exp_path):
             os.makedirs(exp_path)
+            config_dict = vars(args)
+            OmegaConf.save(config_dict, os.path.join(exp_path, "config.yaml"))
     
     if args.resume:
         checkpoint_file = os.path.join(exp_path, 'content.pth')
@@ -112,9 +112,7 @@ def train(rank, gpu, args):
         for iteration, (x, y) in enumerate(data_loader):
             x_1 = x.to(device, non_blocking=True)
             model.zero_grad()
-            encoder_posterior = first_stage_model.encode(x_1, return_dict=True)[0]
-            z_1 = encoder_posterior.sample()
-            z_1 = z_1.to(device) * args.scale_factor
+            z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
             #sample t
             t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
@@ -135,10 +133,11 @@ def train(rank, gpu, args):
             scheduler.step()
         
         if rank == 0:
-            rand = torch.randn_like(z_1)
+            rand = torch.randn_like(z_1)[:4]
             fake_sample = sample_from_model(model, rand)[-1]
-            fake_sample = first_stage_model.decode(fake_sample / 0.18215).sample
-            torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True)
+            fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+            torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
+            torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             
             if args.save_content:
                 if epoch % args.save_content_every == 0:
@@ -162,7 +161,7 @@ def train(rank, gpu, args):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6023'
+    os.environ['MASTER_PORT'] = '6025'
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
@@ -182,7 +181,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')
-    parser.add_argument('--scale_factor', type=float, default=0.18215,
+    parser.add_argument('--scale_factor', type=float, default=1.0,
                             help='size of image')
     parser.add_argument('--num_in_channels', type=int, default=3,
                             help='in channel image')
