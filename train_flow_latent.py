@@ -181,7 +181,7 @@ if __name__ == '__main__':
     
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')
-    parser.add_argument('--scale_factor', type=float, default=1.0,
+    parser.add_argument('--scale_factor', type=float, default=0.18215,
                             help='size of image')
     parser.add_argument('--num_in_channels', type=int, default=3,
                             help='in channel image')
