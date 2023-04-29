@@ -22,6 +22,8 @@ import torch.distributed as dist
 import shutil
 from diffusers.models import AutoencoderKL
 from omegaconf import OmegaConf
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
@@ -134,9 +136,9 @@ def train(rank, gpu, args):
             scheduler.step()
         
         if rank == 0:
-            rand = torch.randn_like(z_1)[:4]
-            fake_sample = sample_from_model(model, rand)[-1]
             with torch.no_grad():
+                rand = torch.randn_like(z_1)[:4]
+                fake_sample = sample_from_model(model, rand)[-1]
                 fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
