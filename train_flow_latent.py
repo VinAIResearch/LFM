@@ -5,23 +5,26 @@
 # for Denoising Diffusion GAN. To view a copy of this license, see the LICENSE file.
 # ---------------------------------------------------------------
 
+import os
+import shutil
 import argparse
-import torch
+from omegaconf import OmegaConf
+
 import numpy as np
+import torch
 # from torchdiffeq import odeint
 from torchdiffeq import odeint_adjoint as odeint
-import os
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-from datasets_prep import get_dataset
-from models.util import get_flow_model
-from torch.multiprocessing import Process
 import torch.distributed as dist
-import shutil
+from torch.multiprocessing import Process
+
+from datasets_prep import get_dataset
 from diffusers.models import AutoencoderKL
-from omegaconf import OmegaConf
+from models.EDM import get_network
+from EMA import EMA
 
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
@@ -37,9 +40,6 @@ def sample_from_model(model, x_0):
 
 #%%
 def train(rank, gpu, args):
-    
-    from EMA import EMA
-    
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed(args.seed + rank)
     torch.cuda.manual_seed_all(args.seed + rank)
@@ -59,8 +59,8 @@ def train(rank, gpu, args):
                                                sampler=train_sampler,
                                                drop_last = True)
     
-    model = get_flow_model(args).to(device)
-    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
+    model = get_network(args).to(device)
+    first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device)
     
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
@@ -77,8 +77,7 @@ def train(rank, gpu, args):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
     
     #ddp
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=False)
-    
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu], find_unused_parameters=False)
     
     exp = args.exp
     parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
@@ -90,7 +89,7 @@ def train(rank, gpu, args):
             config_dict = vars(args)
             OmegaConf.save(config_dict, os.path.join(exp_path, "config.yaml"))
     
-    if args.resume:
+    if args.resume or os.path.exists(os.path.join(exp_path, 'content.pth')):
         checkpoint_file = os.path.join(exp_path, 'content.pth')
         checkpoint = torch.load(checkpoint_file, map_location=device)
         init_epoch = checkpoint['epoch']
@@ -120,7 +119,8 @@ def train(rank, gpu, args):
             v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
             u = (1 - 1e-5) * z_0 - z_1
             
-            loss = F.mse_loss(model(t.squeeze(), v_t), u)
+            v = model(v_t, t.squeeze())
+            loss = F.mse_loss(v, u)
             loss.backward()
             optimizer.step()
             
@@ -171,6 +171,7 @@ def init_processes(rank, size, fn, args):
 
 def cleanup():
     dist.destroy_process_group()    
+
 #%%
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ddgan parameters')
@@ -179,8 +180,12 @@ if __name__ == '__main__':
     
     parser.add_argument('--resume', action='store_true',default=False)
     
+    parser.add_argument('--model_type', type=str, default="adm",
+                            help='model_type', choices=['adm', 'ncsn++', 'ddpm++'])
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')
+    parser.add_argument('--f', type=int, default=8,
+                            help='downsample rate of input image by the autoencoder')
     parser.add_argument('--scale_factor', type=float, default=0.18215,
                             help='size of image')
     parser.add_argument('--num_in_channels', type=int, default=3,
@@ -188,34 +193,43 @@ if __name__ == '__main__':
     parser.add_argument('--num_out_channels', type=int, default=3,
                             help='in channel image')
     parser.add_argument('--nf', type=int, default=256,
-                            help='channel of image')
-    parser.add_argument('--centered', action='store_false', default=True,
-                            help='-1,1 scale')
-    parser.add_argument("--resamp_with_conv", type=bool, default=True)
+                            help='channel of model')
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
-    parser.add_argument('--num_heads', type=int, default=4,
-                            help='number of head')
-    parser.add_argument('--num_head_upsample', type=int, default=-1,
-                            help='number of head upsample')
-    parser.add_argument('--num_head_channels', type=int, default=-1,
-                            help='number of head channels')
     parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,),
                             help='resolution of applying attention')
     parser.add_argument('--ch_mult', nargs='+', type=int, default=(1,1,2,2,4,4),
                             help='channel mult')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
+    parser.add_argument('--label_dim', type=int, default=0,
+                            help='label dimension, 0 if unconditional')
+    parser.add_argument('--augment_dim', type=int, default=0,
+                            help='dimension of augmented label, 0 if not used')
     parser.add_argument('--num_classes', type=int, default=None,
                             help='num classes')
-    parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
-    parser.add_argument("--resblock_updown", type=bool, default=False)
-    parser.add_argument("--use_new_attention_order", type=bool, default=False)
+    parser.add_argument('--label_dropout', type=float, default=0,
+                            help='Dropout probability of class labels for classifier-free guidance')
+
+    # parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
+    # parser.add_argument("--resblock_updown", type=bool, default=False)
+    # parser.add_argument("--use_new_attention_order", type=bool, default=False)
+    # parser.add_argument('--centered', action='store_false', default=True,
+    #                         help='-1,1 scale')
+    # parser.add_argument("--resamp_with_conv", type=bool, default=True)
+    # parser.add_argument('--num_heads', type=int, default=4,
+    #                         help='number of head')
+    # parser.add_argument('--num_head_upsample', type=int, default=-1,
+    #                         help='number of head upsample')
+    # parser.add_argument('--num_head_channels', type=int, default=-1,
+    #                         help='number of head channels')
+
+    parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
     
-    
-    #geenrator and training
+    # training
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
+    parser.add_argument('--datadir', default='./data')
     parser.add_argument('--num_timesteps', type=int, default=200)
 
     parser.add_argument('--batch_size', type=int, default=128, help='input batch size')

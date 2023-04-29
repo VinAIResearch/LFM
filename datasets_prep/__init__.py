@@ -7,16 +7,12 @@ from datasets_prep.lmdb_datasets import LMDBDataset
 
 def get_dataset(args):
     if args.dataset == 'cifar10':
-        dataset = CIFAR10('./dataset', train=True, transform=transforms.Compose([
+        dataset = CIFAR10(args.datadir, train=True, transform=transforms.Compose([
                         transforms.Resize(32),
                         transforms.RandomHorizontalFlip(),
                         transforms.ToTensor(),
                         transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))]), download=True)
        
-    elif args.dataset == 'stackmnist':
-        train_transform, valid_transform = _data_transforms_stacked_mnist()
-        dataset = StackedMNIST(root='./data', train=True, download=False, transform=train_transform)
-        
     elif args.dataset == 'lsun_church':
         train_transform = transforms.Compose([
                         transforms.Resize(args.image_size),
@@ -25,7 +21,7 @@ def get_dataset(args):
                         transforms.ToTensor(),
                         transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
                     ])
-        train_data = LSUN(root='./dataset', classes=['church_outdoor_train'], transform=train_transform)
+        train_data = LSUN(root=args.datadir, classes=['church_outdoor_train'], transform=train_transform)
         subset = list(range(0, 120000))
         dataset = torch.utils.data.Subset(train_data, subset)
       
@@ -36,5 +32,15 @@ def get_dataset(args):
                 transforms.ToTensor(),
                 transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
             ])
-        dataset = LMDBDataset(root='./dataset/celeba-lmdb/', name='celeba', train=True, transform=train_transform)
+        dataset = LMDBDataset(root=args.datadir, name='celeba', train=True, transform=train_transform)
+
+    elif args.dataset == 'ffhq_256':
+        train_transform = transforms.Compose([
+            transforms.Resize(args.image_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        dataset = LMDBDataset(root=args.datadir, name='ffhq',
+                              train=True, transform=train_transform)
     return dataset
