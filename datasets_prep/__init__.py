@@ -45,7 +45,7 @@ def get_dataset(args):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-512/data512x512', db_name='celeba_512',
+        dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-512/', db_name='celeba_512',
                             transform=train_transform, backend="pil")
 
     elif args.dataset == 'celeba_1024':
@@ -56,6 +56,6 @@ def get_dataset(args):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-1k/data1024x1024', db_name='celeba_1024',
+        dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-1k/', db_name='celeba_1024',
                             transform=train_transform, backend="pil")
     return dataset
