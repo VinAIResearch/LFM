@@ -161,7 +161,7 @@ def train(rank, gpu, args):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6025'
+    os.environ['MASTER_PORT'] = args.master_port
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
@@ -248,6 +248,8 @@ if __name__ == '__main__':
     parser.add_argument('--local_rank', type=int, default=0,
                         help='rank of process in the node')
     parser.add_argument('--master_address', type=str, default='127.0.0.1',
+                        help='address for master')
+    parser.add_argument('--master_port', type=str, default='6255',
                         help='address for master')
 
    
