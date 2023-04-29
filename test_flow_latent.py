@@ -52,7 +52,7 @@ def sample_and_test(args):
     if args.dataset == 'cifar10':
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
-        real_img_dir = 'pytorch_fid/celeba_256_stat.npy'
+        real_img_dir = 'pytorch_fid/celebahq_stat.npy'
     elif args.dataset == 'lsun':
         real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
     else:
@@ -73,7 +73,7 @@ def sample_and_test(args):
 
     del ckpt
         
-    iters_needed = 10000 //args.batch_size
+    iters_needed = args.n_sample //args.batch_size
     
     save_dir = "./generated_samples/{}".format(args.dataset)
     
@@ -125,6 +125,8 @@ if __name__ == '__main__':
                             help='in channel image')
     parser.add_argument('--nf', type=int, default=256,
                             help='channel of image')
+    parser.add_argument('--n_sample', type=int, default=50000,
+                            help='number of sampled images')
     parser.add_argument('--centered', action='store_false', default=True,
                             help='-1,1 scale')
     parser.add_argument("--resamp_with_conv", type=bool, default=True)
