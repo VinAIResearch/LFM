@@ -38,19 +38,24 @@ def get_dataset(args):
             ])
         dataset = LMDBDataset(root='./dataset/celeba-lmdb/', name='celeba', train=True, transform=train_transform)
     elif args.dataset == 'celeba_512':
+        from torchtoolbox.data import ImageLMDB
         train_transform = transforms.Compose([
-                transforms.Resize(args.image_size),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
-            ])
-        dataset = LMDBDataset(root='./dataset/celeba-lmdb-512/', name='celeba-512', train=True, transform=train_transform)
+            transforms.Resize(args.image_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-512/data512x512', db_name='celeba_512',
+                            transform=train_transform, backend="pil")
+
     elif args.dataset == 'celeba_1024':
+        from torchtoolbox.data import ImageLMDB
         train_transform = transforms.Compose([
-                transforms.Resize(args.image_size),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
-            ])
-        dataset = LMDBDataset(root='./dataset/celeba-lmdb-1k/', name='celeba-1k', train=True, transform=train_transform)
+            transforms.Resize(args.image_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-1k/data1024x1024', db_name='celeba_1024',
+                            transform=train_transform, backend="pil")
     return dataset
