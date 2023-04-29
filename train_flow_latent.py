@@ -112,7 +112,8 @@ def train(rank, gpu, args):
         for iteration, (x, y) in enumerate(data_loader):
             x_1 = x.to(device, non_blocking=True)
             model.zero_grad()
-            z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
+            with torch.no_grad():
+                z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
             #sample t
             t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
@@ -135,7 +136,8 @@ def train(rank, gpu, args):
         if rank == 0:
             rand = torch.randn_like(z_1)[:4]
             fake_sample = sample_from_model(model, rand)[-1]
-            fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+            with torch.no_grad():
+                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             
