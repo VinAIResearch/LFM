@@ -88,6 +88,7 @@ def train(rank, gpu, args):
             os.makedirs(exp_path)
             config_dict = vars(args)
             OmegaConf.save(config_dict, os.path.join(exp_path, "config.yaml"))
+    print("Exp path:", exp_path)
     
     if args.resume or os.path.exists(os.path.join(exp_path, 'content.pth')):
         checkpoint_file = os.path.join(exp_path, 'content.pth')
@@ -119,7 +120,7 @@ def train(rank, gpu, args):
             v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
             u = (1 - 1e-5) * z_0 - z_1
             
-            v = model(v_t, t.squeeze())
+            v = model(t.squeeze(), v_t)
             loss = F.mse_loss(v, u)
             loss.backward()
             optimizer.step()
@@ -133,9 +134,10 @@ def train(rank, gpu, args):
             scheduler.step()
         
         if rank == 0:
-            rand = torch.randn_like(z_1)[:4]
-            fake_sample = sample_from_model(model, rand)[-1]
-            fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+            with torch.no_grad():
+                rand = torch.randn_like(z_1)[:4]
+                fake_sample = sample_from_model(model, rand)[-1]
+                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             
@@ -161,7 +163,7 @@ def train(rank, gpu, args):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6025'
+    os.environ['MASTER_PORT'] = args.master_port
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
@@ -263,6 +265,8 @@ if __name__ == '__main__':
                         help='rank of process in the node')
     parser.add_argument('--master_address', type=str, default='127.0.0.1',
                         help='address for master')
+    parser.add_argument('--master_port', type=str, default='6000',
+                        help='port for master')
 
    
     args = parser.parse_args()

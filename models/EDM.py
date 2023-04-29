@@ -192,6 +192,8 @@ class PositionalEmbedding(torch.nn.Module):
         self.endpoint = endpoint
 
     def forward(self, x):
+        if x.dim() == 0:
+            x = x[None]
         freqs = torch.arange(start=0, end=self.num_channels//2, dtype=torch.float32, device=x.device)
         freqs = freqs / (self.num_channels // 2 - (1 if self.endpoint else 0))
         freqs = (1 / self.max_positions) ** freqs
@@ -208,6 +210,8 @@ class FourierEmbedding(torch.nn.Module):
         self.register_buffer('freqs', torch.randn(num_channels // 2) * scale)
 
     def forward(self, x):
+        if x.dim() == 0:
+            x = x[None]
         x = x.ger((2 * np.pi * self.freqs).to(x.dtype))
         x = torch.cat([x.cos(), x.sin()], dim=1)
         return x
@@ -309,7 +313,7 @@ class SongUNet(torch.nn.Module):
                 self.dec[f'{res}x{res}_aux_norm'] = GroupNorm(num_channels=cout, eps=1e-6)
                 self.dec[f'{res}x{res}_aux_conv'] = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
-    def forward(self, x, noise_labels, class_labels, augment_labels=None):
+    def forward(self, noise_labels, x, class_labels, augment_labels=None):
         # Mapping.
         emb = self.map_noise(noise_labels)
         emb = emb.reshape(emb.shape[0], 2, -1).flip(1).reshape(*emb.shape) # swap sin/cos
@@ -423,7 +427,7 @@ class DhariwalUNet(torch.nn.Module):
         self.out_norm = GroupNorm(num_channels=cout)
         self.out_conv = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
-    def forward(self, x, noise_labels, class_labels=None, augment_labels=None):
+    def forward(self, noise_labels, x, class_labels=None, augment_labels=None):
         # Mapping.
         emb = self.map_noise(noise_labels)
         if self.map_augment is not None and augment_labels is not None:
