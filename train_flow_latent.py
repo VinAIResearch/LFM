@@ -8,7 +8,6 @@
 import argparse
 import torch
 import numpy as np
-# from torchdiffeq import odeint
 from torchdiffeq import odeint_adjoint as odeint
 import os
 import torch.nn as nn
@@ -20,14 +19,27 @@ from models.util import get_flow_model
 from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
-from diffusers.models import AutoencoderKL
 from omegaconf import OmegaConf
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
-            
+
+
+def get_weight(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024**2
+    return size_all_mb
+    
+
+
 def broadcast_params(params):
     for param in params:
         dist.broadcast(param.data, src=0)
@@ -41,6 +53,7 @@ def sample_from_model(model, x_0):
 def train(rank, gpu, args):
     
     from EMA import EMA
+    from diffusers.models import AutoencoderKL
     
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed(args.seed + rank)
@@ -68,6 +81,9 @@ def train(rank, gpu, args):
     first_stage_model.train = False
     for param in first_stage_model.parameters():
         param.requires_grad = False
+        
+    print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
+    print('FM size: {:.3f}MB'.format(get_weight(model)))
         
     broadcast_params(model.parameters())
     
@@ -116,7 +132,7 @@ def train(rank, gpu, args):
             model.zero_grad()
             with torch.no_grad():
                 z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
-            #sample t
+            #sample t            
             t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
             z_0 = torch.randn_like(z_1)
@@ -126,7 +142,6 @@ def train(rank, gpu, args):
             loss = F.mse_loss(model(t.squeeze(), v_t), u)
             loss.backward()
             optimizer.step()
-            
             global_step += 1
             if iteration % 100 == 0:
                 if rank == 0:
@@ -256,7 +271,9 @@ if __name__ == '__main__':
     parser.add_argument('--master_port', type=str, default='6255',
                         help='address for master')
 
-   
+
+    # torch.multiprocessing.set_start_method('spawn', force=True)# good solution !!!!
+
     args = parser.parse_args()
     args.world_size = args.num_proc_node * args.num_process_per_node
     size = args.num_process_per_node
