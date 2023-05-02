@@ -8,10 +8,14 @@
 import os
 import shutil
 import argparse
+from functools import partial
 from omegaconf import OmegaConf
 
 import numpy as np
 import torch
+# faster training
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 # from torchdiffeq import odeint
 from torchdiffeq import odeint_adjoint as odeint
 import torch.nn as nn
@@ -22,8 +26,7 @@ import torch.distributed as dist
 from torch.multiprocessing import Process
 
 from datasets_prep import get_dataset
-from diffusers.models import AutoencoderKL
-from models.EDM import get_network
+from models import create_network
 from EMA import EMA
 
 def copy_source(file, output_dir):
@@ -35,11 +38,12 @@ def broadcast_params(params):
 
 def sample_from_model(model, x_0):
     t = torch.tensor([1., 0.], device="cuda")
-    fake_image = odeint(model, x_0, t, atol=1e-8, rtol=1e-8)
+    fake_image = odeint(model, x_0, t, atol=1e-8, rtol=1e-8, adjoint_params=model.func.parameters())
     return fake_image
 
 #%%
 def train(rank, gpu, args):
+    from diffusers.models import AutoencoderKL
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed(args.seed + rank)
     torch.cuda.manual_seed_all(args.seed + rank)
@@ -59,7 +63,7 @@ def train(rank, gpu, args):
                                                sampler=train_sampler,
                                                drop_last = True)
     
-    model = get_network(args).to(device)
+    model = create_network(args).to(device)
     first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device)
     
     first_stage_model = first_stage_model.eval()
@@ -105,22 +109,28 @@ def train(rank, gpu, args):
     else:
         global_step, epoch, init_epoch = 0, 0, 0
     
-    
+    use_label = True if "imagenet" in args.dataset else False
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
        
         for iteration, (x, y) in enumerate(data_loader):
-            x_1 = x.to(device, non_blocking=True)
+            x_0 = x.to(device, non_blocking=True)
+            y = None if not use_label else y.to(device, non_blocking=True)
+
             model.zero_grad()
-            z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
+            z_0 = first_stage_model.encode(x_0).latent_dist.sample().mul_(args.scale_factor)
             #sample t
-            t = torch.rand((z_1.size(0),) , device=device)
+            t = torch.rand((z_0.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
-            z_0 = torch.randn_like(z_1)
-            v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
-            u = (1 - 1e-5) * z_0 - z_1
+            z_1 = torch.randn_like(z_0)
+            # corrected notation: 1 is real noise, 0 is real data
+            v_t = (1 - t) * z_0 + (1e-5 + (1 - 1e-5) * t) * z_1
+            u = (1 - 1e-5) * z_1 - z_0
+            # alternative notation (similar to flow matching): 1 is data, 0 is real noise
+            # v_t = (1 - (1 - 1e-5) * t) * z_0 + t * z_1
+            # u = z_1 - (1 - 1e-5) * z_0
             
-            v = model(t.squeeze(), v_t)
+            v = model(t.squeeze(), v_t, y)
             loss = F.mse_loss(v, u)
             loss.backward()
             optimizer.step()
@@ -134,12 +144,15 @@ def train(rank, gpu, args):
             scheduler.step()
         
         if rank == 0:
-            with torch.no_grad():
-                rand = torch.randn_like(z_1)[:4]
-                fake_sample = sample_from_model(model, rand)[-1]
-                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
-            torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
-            torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
+            if epoch % args.plot_every == 0: 
+                with torch.no_grad():
+                    rand = torch.randn_like(z_0)[:4]
+                    sample_model = partial(model, y=y)
+                    # sample_func = lambda t, x: model(t, x, y=y)
+                    fake_sample = sample_from_model(sample_model, rand)[-1]
+                    fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                # torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
+                torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
             
             if args.save_content:
                 if epoch % args.save_content_every == 0:
@@ -183,7 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume', action='store_true',default=False)
     
     parser.add_argument('--model_type', type=str, default="adm",
-                            help='model_type', choices=['adm', 'ncsn++', 'ddpm++'])
+                            help='model_type', choices=['adm', 'ncsn++', 'ddpm++', 'DiT-L/2', 'DiT-XL/2'])
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')
     parser.add_argument('--f', type=int, default=8,
@@ -210,7 +223,7 @@ if __name__ == '__main__':
                             help='dimension of augmented label, 0 if not used')
     parser.add_argument('--num_classes', type=int, default=None,
                             help='num classes')
-    parser.add_argument('--label_dropout', type=float, default=0,
+    parser.add_argument('--label_dropout', type=float, default=0.,
                             help='Dropout probability of class labels for classifier-free guidance')
 
     # parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
@@ -253,6 +266,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_content', action='store_true',default=False)
     parser.add_argument('--save_content_every', type=int, default=50, help='save content for resuming every x epochs')
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
+    parser.add_argument('--plot_every', type=int, default=5, help='plot every x epochs')
    
     ###ddp
     parser.add_argument('--num_proc_node', type=int, default=1,

@@ -3,4 +3,5 @@ diffusers
 torchdiffeq
 ml_collections
 omegaconf
+timm
 # ninja

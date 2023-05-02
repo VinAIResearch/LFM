@@ -249,6 +249,7 @@ class SongUNet(torch.nn.Module):
         assert decoder_type in ['standard', 'skip']
 
         super().__init__()
+        self.label_dim = label_dim
         self.label_dropout = label_dropout
         emb_channels = model_channels * channel_mult_emb
         noise_channels = model_channels * channel_mult_noise
@@ -313,12 +314,12 @@ class SongUNet(torch.nn.Module):
                 self.dec[f'{res}x{res}_aux_norm'] = GroupNorm(num_channels=cout, eps=1e-6)
                 self.dec[f'{res}x{res}_aux_conv'] = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
-    def forward(self, noise_labels, x, class_labels, augment_labels=None):
+    def forward(self, noise_labels, x, y, augment_labels=None):
         # Mapping.
         emb = self.map_noise(noise_labels)
         emb = emb.reshape(emb.shape[0], 2, -1).flip(1).reshape(*emb.shape) # swap sin/cos
         if self.map_label is not None:
-            tmp = class_labels
+            tmp = torch.nn.functional.one_hot(y, self.label_dim).float()
             if self.training and self.label_dropout:
                 tmp = tmp * (torch.rand([x.shape[0], 1], device=x.device) >= self.label_dropout).to(tmp.dtype)
             emb = emb + self.map_label(tmp * np.sqrt(self.map_label.in_features))
@@ -381,6 +382,7 @@ class DhariwalUNet(torch.nn.Module):
         label_dropout       = 0,            # Dropout probability of class labels for classifier-free guidance.
     ):
         super().__init__()
+        self.label_dim = label_dim
         self.label_dropout = label_dropout
         emb_channels = model_channels * channel_mult_emb
         init = dict(init_mode='kaiming_uniform', init_weight=np.sqrt(1/3), init_bias=np.sqrt(1/3))
@@ -427,7 +429,7 @@ class DhariwalUNet(torch.nn.Module):
         self.out_norm = GroupNorm(num_channels=cout)
         self.out_conv = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
-    def forward(self, noise_labels, x, class_labels=None, augment_labels=None):
+    def forward(self, noise_labels, x, y=None, augment_labels=None):
         # Mapping.
         emb = self.map_noise(noise_labels)
         if self.map_augment is not None and augment_labels is not None:
@@ -435,7 +437,7 @@ class DhariwalUNet(torch.nn.Module):
         emb = silu(self.map_layer0(emb))
         emb = self.map_layer1(emb)
         if self.map_label is not None:
-            tmp = class_labels
+            tmp = torch.nn.functional.one_hot(y, self.label_dim).float()
             if self.training and self.label_dropout:
                 tmp = tmp * (torch.rand([x.shape[0], 1], device=x.device) >= self.label_dropout).to(tmp.dtype)
             emb = emb + self.map_label(tmp)
@@ -455,7 +457,7 @@ class DhariwalUNet(torch.nn.Module):
         x = self.out_conv(silu(self.out_norm(x)))
         return x 
 
-def get_network(config):
+def get_edm_network(config):
     if config.model_type == "ncsn++":
         model = SongUNet(
             img_resolution=config.image_size//config.f,
