@@ -117,7 +117,7 @@ def train(rank, gpu, args):
         # load G
         optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
-        
+        global_step = checkpoint["global_step"]
         print("=> loaded checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
     else:
