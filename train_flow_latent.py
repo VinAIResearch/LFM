@@ -120,6 +120,7 @@ def train(rank, gpu, args):
         global_step = checkpoint["global_step"]
         print("=> loaded checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
+        del checkpoint
     else:
         global_step, epoch, init_epoch = 0, 0, 0
     
