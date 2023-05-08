@@ -1,10 +1,10 @@
 #!/bin/sh
-#SBATCH --job-name=xin_05 # create a short name for your job
+#SBATCH --job-name=church_dit # create a short name for your job
 #SBATCH --output=/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurms/slurm_%A.out # create a output file
 #SBATCH --error=/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurms/slurm_%A.err # create a error file
 #SBATCH --partition=research # choose partition
-#SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=32 # 80
+#SBATCH --gpus-per-node=2
+#SBATCH --cpus-per-task=12 # 80
 #SBATCH --mem-per-gpu=32GB
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -17,7 +17,7 @@
 set -x
 set -e
 
-export MASTER_PORT=6006
+export MASTER_PORT=6010
 export WORLD_SIZE=1
 
 export SLURM_JOB_NODELIST=$(scontrol show hostnames $SLURM_JOB_NODELIST | tr '\n' ' ')
@@ -35,23 +35,23 @@ export PYTHONFAULTHANDLER=1
 
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_f8_lr2e-5 \
-    --dataset ffhq_256 --datadir data/ffhq/ffhq-lmdb \
-    --batch_size 128 --num_epoch 500 \
-    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-    --lr 2e-5 --scale_factor 0.18215 \
-    --save_content_every 10 \
-    --master_port $MASTER_PORT
-
-# CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_bed_f8 \
-#     --dataset lsun_bedroom --datadir data/lsun/ \
-#     --batch_size 128 --num_epoch 300 \
+# python train_flow_latent.py --exp laflo_f8_lr2e-5 \
+#     --dataset ffhq_256 --datadir data/ffhq/ffhq-lmdb \
+#     --batch_size 128 --num_epoch 500 \
 #     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
 #     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-#     --lr 1e-4 --scale_factor 0.18215 \
+#     --lr 2e-5 --scale_factor 0.18215 \
 #     --save_content_every 10 \
 #     --master_port $MASTER_PORT
+
+# python train_flow_latent.py --exp laflo_bed_f8_lr5e-5 \
+#     --dataset lsun_bedroom --datadir data/lsun/ \
+#     --batch_size 128 --num_epoch 500 \
+#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#     --lr 5e-5 --scale_factor 0.18215 \
+#     --save_content_every 10 \
+#     --master_port $MASTER_PORT --num_process_per_node 1 \
 
 # CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_imnet_f8 \
 #     --dataset imagenet_256 --datadir ../data/imagenet/ --num_classes 1000 \
@@ -91,3 +91,13 @@ CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_f8_lr2e-5 \
 #     --model_type DiT-L/2 --num_classes 1 --label_dropout 0. \
 #     --save_content_every 10 \
 #     --master_port $MASTER_PORT
+
+python train_flow_latent.py --exp laflo_church_f8_dit \
+    --dataset lsun_church --datadir data/lsun/ \
+    --batch_size 48 --num_epoch 500 \
+    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+    --lr 1e-4 --scale_factor 0.18215 \
+    --model_type DiT-L/2 --num_classes 1 --label_dropout 0. \
+    --save_content_every 10 \
+    --master_port $MASTER_PORT --num_process_per_node 2

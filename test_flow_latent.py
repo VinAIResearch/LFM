@@ -86,7 +86,8 @@ def sample_and_test(rank, gpu, args):
     del ckpt
         
     iters_needed = 50000 // args.batch_size
-    save_dir = "./generated_samples/{}".format(args.dataset)
+    save_dir = "./generated_samples/{}/exp{}_ep{}".format(args.dataset, args.exp, args.epoch_id)
+    # save_dir = "./generated_samples/{}/".format(args.dataset)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -113,7 +114,7 @@ def sample_and_test(rank, gpu, args):
                 fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
                 for j, x in enumerate(fake_image):
                     index = j * args.world_size + rank + total
-                    torchvision.utils.save_image(x, './generated_samples/{}/{}.jpg'.format(args.dataset, index))
+                    torchvision.utils.save_image(x, '{}/{}.jpg'.format(save_dir, index))
                 if rank == 0:
                     print('generating batch ', i)
                 total += global_batch_size
@@ -125,6 +126,8 @@ def sample_and_test(rank, gpu, args):
             kwargs = {'batch_size': 200, 'device': device, 'dims': 2048}
             fid = calculate_fid_given_paths(paths=paths, **kwargs)
             print('FID = {}'.format(fid))
+            with open(args.output_log, "a") as f:
+                f.write('Epoch = {}, FID = {}'.format(args.epoch_id, fid))
     else:
         x_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
         fake_sample = sample_from_model(model, x_0, args)[-1]
@@ -187,6 +190,7 @@ if __name__ == '__main__':
     # parser.add_argument("--use_new_attention_order", type=bool, default=False)
 
     parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
+    parser.add_argument('--output_log', type=str, default="")
     
     #######################################
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
