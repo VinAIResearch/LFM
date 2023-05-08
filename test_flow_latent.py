@@ -85,9 +85,9 @@ def sample_and_test(rank, gpu, args):
 
     del ckpt
         
-    iters_needed = 50000 // args.batch_size
+    iters_needed = args.n_sample //args.batch_size
     save_dir = "./generated_samples/{}/exp{}_ep{}".format(args.dataset, args.exp, args.epoch_id)
-    # save_dir = "./generated_samples/{}/".format(args.dataset)
+    # save_dir = "./generated_samples/{}".format(args.dataset)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -159,6 +159,8 @@ if __name__ == '__main__':
                             help='in channel image')
     parser.add_argument('--nf', type=int, default=256,
                             help='channel of image')
+    parser.add_argument('--n_sample', type=int, default=50000,
+                            help='number of sampled images')
     parser.add_argument('--centered', action='store_false', default=True,
                             help='-1,1 scale')
     parser.add_argument("--resamp_with_conv", type=bool, default=True)

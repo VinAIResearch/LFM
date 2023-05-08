@@ -29,17 +29,33 @@ from datasets_prep import get_dataset
 from models import create_network
 from EMA import EMA
 
+
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
-            
+
+
+def get_weight(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024**2
+    return size_all_mb
+
+
 def broadcast_params(params):
     for param in params:
         dist.broadcast(param.data, src=0)
+
 
 def sample_from_model(model, x_0):
     t = torch.tensor([1., 0.], device="cuda")
     fake_image = odeint(model, x_0, t, atol=1e-8, rtol=1e-8, adjoint_params=model.func.parameters())
     return fake_image
+
 
 #%%
 def train(rank, gpu, args):
@@ -70,6 +86,9 @@ def train(rank, gpu, args):
     first_stage_model.train = False
     for param in first_stage_model.parameters():
         param.requires_grad = False
+        
+    print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
+    print('FM size: {:.3f}MB'.format(get_weight(model)))
         
     broadcast_params(model.parameters())
     
@@ -134,7 +153,6 @@ def train(rank, gpu, args):
             loss = F.mse_loss(v, u)
             loss.backward()
             optimizer.step()
-            
             global_step += 1
             if iteration % 100 == 0:
                 if rank == 0:
@@ -147,7 +165,7 @@ def train(rank, gpu, args):
             if epoch % args.plot_every == 0: 
                 with torch.no_grad():
                     rand = torch.randn_like(z_0)[:4]
-                    sample_model = partial(model, y=y)
+                    sample_model = partial(model, y=y[:4])
                     # sample_func = lambda t, x: model(t, x, y=y)
                     fake_sample = sample_from_model(sample_model, rand)[-1]
                     fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
@@ -184,8 +202,10 @@ def init_processes(rank, size, fn, args):
     dist.barrier()
     cleanup()  
 
+
 def cleanup():
     dist.destroy_process_group()    
+
 
 #%%
 if __name__ == '__main__':
@@ -264,7 +284,7 @@ if __name__ == '__main__':
     
 
     parser.add_argument('--save_content', action='store_true',default=False)
-    parser.add_argument('--save_content_every', type=int, default=50, help='save content for resuming every x epochs')
+    parser.add_argument('--save_content_every', type=int, default=10, help='save content for resuming every x epochs')
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
     parser.add_argument('--plot_every', type=int, default=5, help='plot every x epochs')
    
@@ -282,7 +302,6 @@ if __name__ == '__main__':
     parser.add_argument('--master_port', type=str, default='6000',
                         help='port for master')
 
-   
     args = parser.parse_args()
     args.world_size = args.num_proc_node * args.num_process_per_node
     size = args.num_process_per_node
