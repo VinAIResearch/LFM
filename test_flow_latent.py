@@ -11,6 +11,7 @@ from tqdm import tqdm
 import math
 
 import torch
+from torch import nn
 import torchvision
 from torchdiffeq import odeint_adjoint as odeint
 
@@ -24,6 +25,18 @@ from ddp_utils import init_processes
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
 FIXER_SOLVER = ["euler", "rk4", "midpoint"]
 
+
+class NFECount(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        self.register_buffer("nfe", torch.tensor(0.))
+    
+    def __call__(self, t, x, *args, **kwargs):
+        self.nfe += 1.
+        return self.model(t, x, *args, **kwargs)
+
+
 def sample_from_model(model, x_0, args):
     if args.method in ADAPTIVE_SOLVER:
         options = {
@@ -34,8 +47,10 @@ def sample_from_model(model, x_0, args):
             "step_size": args.step_size,
             "perturb": args.perturb
         }
-    if not args.compute_fid:
-        model.count_nfe = True
+    if args.compute_nfe:
+        # model.count_nfe = True
+        model = NFECount(model).to(x_0.device) # count wrapper
+
     t = torch.tensor([1., 0.], device="cuda")
     fake_image = odeint(model, 
                         x_0, 
@@ -48,11 +63,14 @@ def sample_from_model(model, x_0, args):
                         adjoint_rtol= args.rtol,
                         options=options
                         )
+    if args.compute_nfe:
+        return fake_image, model.nfe
     return fake_image
 
 
 def sample_and_test(rank, gpu, args):
     from diffusers.models import AutoencoderKL
+    torch.set_grad_enabled(False)
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed(args.seed + rank)
     torch.cuda.manual_seed_all(args.seed + rank)
@@ -86,13 +104,55 @@ def sample_and_test(rank, gpu, args):
     del ckpt
         
     iters_needed = args.n_sample //args.batch_size
-    save_dir = "./generated_samples/{}/exp{}_ep{}".format(args.dataset, args.exp, args.epoch_id)
+    save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
+
+    if args.compute_nfe:
+        print("Compute nfe")
+        average_nfe = 0.
+        num_trials = 300
+        for i in tqdm(range(num_trials)):
+            x_0 = torch.randn(1, 4, args.image_size//8, args.image_size//8).to(device)
+            _, nfe = sample_from_model(model, x_0, args)
+            average_nfe += nfe/num_trials
+        print(f"Average NFE over {num_trials} trials: {int(average_nfe)}")
+        exit(0)
+
+    if args.measure_time:
+        print("Measure time")
+        x_0 = torch.randn(1, 4,
+                            args.image_size//8, args.image_size//8).to(device)
+        # INIT LOGGERS
+        starter, ender = torch.cuda.Event(
+            enable_timing=True), torch.cuda.Event(enable_timing=True)
+        repetitions = 300
+        timings = np.zeros((repetitions, 1))
+        # GPU-WARM-UP
+        for _ in range(10):
+            _ = sample_from_model(model, x_0, args)[-1]
+        # MEASURE PERFORMANCE
+        with torch.no_grad():
+            for rep in tqdm(range(repetitions)):
+                starter.record()
+                x_0 = torch.randn(1, 4,
+                                    args.image_size//8, args.image_size//8).to(device)
+                fake_sample = sample_from_model(model, x_0, args)[-1]
+                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                ender.record()
+                # WAIT FOR GPU SYNC
+                torch.cuda.synchronize()
+                curr_time = starter.elapsed_time(ender)
+                timings[rep] = curr_time
+        mean_syn = np.sum(timings) / repetitions
+        std_syn = np.std(timings)
+        print("Inference time: {:.2f}+/-{:.2f}ms".format(mean_syn, std_syn))
+        exit(0)
     
     if args.compute_fid:
+        print("Compute fid")
         # Figure out how many samples we need to generate on each GPU and how many iterations we need to run:
         n = args.batch_size
         global_batch_size = n * args.world_size
@@ -129,12 +189,13 @@ def sample_and_test(rank, gpu, args):
             with open(args.output_log, "a") as f:
                 f.write('Epoch = {}, FID = {}'.format(args.epoch_id, fid))
     else:
-        x_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-        fake_sample = sample_from_model(model, x_0, args)[-1]
-        fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+        print("Inference")
+        with torch.no_grad():
+            x_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+            fake_sample = sample_from_model(model, x_0, args)[-1]
+            fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
         fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
-        print("NFE: {}".format(model.nfe))
-        torchvision.utils.save_image(fake_image, './samples_{}_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol, model.nfe))
+        torchvision.utils.save_image(fake_image, './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol))
 
 
 if __name__ == '__main__':
@@ -143,6 +204,10 @@ if __name__ == '__main__':
                         help='seed used for initialization')
     parser.add_argument('--compute_fid', action='store_true', default=False,
                             help='whether or not compute FID')
+    parser.add_argument('--compute_nfe', action='store_true', default=False,
+                            help='whether or not compute NFE')
+    parser.add_argument('--measure_time', action='store_true', default=False,
+                            help='wheter or not measure time')
     parser.add_argument('--epoch_id', type=int,default=1000)
 
     parser.add_argument('--model_type', type=str, default="adm",

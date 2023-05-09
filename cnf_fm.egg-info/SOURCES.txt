@@ -1,5 +1,0 @@
-setup.py
-cnf_fm.egg-info/PKG-INFO
-cnf_fm.egg-info/SOURCES.txt
-cnf_fm.egg-info/dependency_links.txt
-cnf_fm.egg-info/top_level.txt

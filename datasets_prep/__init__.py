@@ -4,7 +4,9 @@ from torchvision.datasets import CIFAR10, ImageNet
 from datasets_prep.lsun import LSUN
 from datasets_prep.stackmnist_data import StackedMNIST, _data_transforms_stacked_mnist
 from datasets_prep.lmdb_datasets import LMDBDataset
+from datasets_prep.latent_datasets import LatentDataset
 from datasets_prep.data_transforms import center_crop_arr
+
 
 def get_dataset(args):
     if args.dataset == 'cifar10':
@@ -20,6 +22,10 @@ def get_dataset(args):
                         transforms.RandomHorizontalFlip(),
                         transforms.ToTensor(),
                         transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))]))
+
+    elif args.dataset == 'latent_imagenet_256':
+        dataset = LatentDataset(args.datadir, train=True, transform=transforms.Compose([
+                        transforms.RandomHorizontalFlip()]))
        
     elif args.dataset == 'lsun_church':
         train_transform = transforms.Compose([

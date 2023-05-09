@@ -54,8 +54,8 @@ python test_flow_latent.py --exp $EXP \
 model_type = "adm" # or "DiT-L/2" or "adm"
 dataset = "ffhq_256"
 exp = "laflo_f8_lr2e-5"
-epochs = [300]
-BASE_PORT = 8012
+epochs = [400, 425]
+BASE_PORT = 8014
 
 ###################################
 slurm_file_path = f"/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurm_scripts/{exp}/run.sh"
