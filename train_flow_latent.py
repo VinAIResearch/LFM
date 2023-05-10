@@ -53,7 +53,21 @@ def broadcast_params(params):
 
 def sample_from_model(model, x_0):
     t = torch.tensor([1., 0.], device="cuda")
-    fake_image = odeint(model, x_0, t, atol=1e-8, rtol=1e-8, adjoint_params=model.func.parameters())
+    fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5, adjoint_params=model.func.parameters())
+    # fake_image = odeint(
+    #     model, 
+    #     x_0, 
+    #     t,
+    #     method="euler", 
+    #     atol=1e-5, 
+    #     rtol=1e-5,
+    #     adjoint_method="euler",
+    #     adjoint_atol=1e-5,
+    #     adjoint_rtol=1e-5,
+    #     adjoint_params=model.func.parameters(),
+    #     options={"step_size": 50}
+    #     )
+    
     return fake_image
 
 
@@ -68,6 +82,7 @@ def train(rank, gpu, args):
     batch_size = args.batch_size
     
     dataset = get_dataset(args)
+    print(dataset)
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                     num_replicas=args.world_size,
                                                                     rank=rank)
@@ -123,21 +138,35 @@ def train(rank, gpu, args):
         optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
         
-        print("=> loaded checkpoint (epoch {})"
+        print("=> resume checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
+
+    elif args.model_ckpt and os.path.exists(os.path.join(exp_path, args.model_ckpt)):
+        checkpoint_file = os.path.join(exp_path, args.model_ckpt)
+        checkpoint = torch.load(checkpoint_file, map_location=device)
+        epoch = int(args.model_ckpt.split("_")[-1][:-4])
+        init_epoch = epoch
+        model.load_state_dict(checkpoint)
+        global_step = 0
+
+        print("=> loaded checkpoint (epoch {})"
+                  .format(epoch))
     else:
         global_step, epoch, init_epoch = 0, 0, 0
     
     use_label = True if "imagenet" in args.dataset else False
+    is_latent_data = True if "latent" in args.dataset else False
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
        
         for iteration, (x, y) in enumerate(data_loader):
             x_0 = x.to(device, non_blocking=True)
             y = None if not use_label else y.to(device, non_blocking=True)
-
             model.zero_grad()
-            z_0 = first_stage_model.encode(x_0).latent_dist.sample().mul_(args.scale_factor)
+            if is_latent_data:
+                z_0 = x_0 * args.scale_factor
+            else:
+                z_0 = first_stage_model.encode(x_0).latent_dist.sample().mul_(args.scale_factor)
             #sample t
             t = torch.rand((z_0.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
@@ -157,21 +186,25 @@ def train(rank, gpu, args):
             if iteration % 100 == 0:
                 if rank == 0:
                     print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
-        
+            
         if not args.no_lr_decay:
             scheduler.step()
         
         if rank == 0:
             if epoch % args.plot_every == 0: 
+
                 with torch.no_grad():
                     rand = torch.randn_like(z_0)[:4]
-                    sample_model = partial(model, y=y[:4])
+                    if y is not None:
+                        y = y[:4]
+                    sample_model = partial(model, y=y)
                     # sample_func = lambda t, x: model(t, x, y=y)
                     fake_sample = sample_from_model(sample_model, rand)[-1]
                     fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
                 # torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
                 torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
-            
+                print("Finish sampling")
+
             if args.save_content:
                 if epoch % args.save_content_every == 0:
                     print('Saving content.')
@@ -214,9 +247,11 @@ if __name__ == '__main__':
                         help='seed used for initialization')
     
     parser.add_argument('--resume', action='store_true',default=False)
-    
+    parser.add_argument('--model_ckpt', type=str, default=None,
+                            help="Model ckpt to init from")
+
     parser.add_argument('--model_type', type=str, default="adm",
-                            help='model_type', choices=['adm', 'ncsn++', 'ddpm++', 'DiT-L/2', 'DiT-XL/2'])
+                            help='model_type', choices=['adm', 'ncsn++', 'ddpm++', 'DiT-B/2', 'DiT-L/2', 'DiT-XL/2'])
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')
     parser.add_argument('--f', type=int, default=8,
@@ -283,7 +318,7 @@ if __name__ == '__main__':
     parser.add_argument('--ema_decay', type=float, default=0.9999, help='decay rate for EMA')
     
 
-    parser.add_argument('--save_content', action='store_true',default=False)
+    parser.add_argument('--save_content', action='store_true', default=False)
     parser.add_argument('--save_content_every', type=int, default=10, help='save content for resuming every x epochs')
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
     parser.add_argument('--plot_every', type=int, default=5, help='plot every x epochs')

@@ -429,6 +429,7 @@ class DhariwalUNet(torch.nn.Module):
         self.out_norm = GroupNorm(num_channels=cout)
         self.out_conv = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
+
     def forward(self, noise_labels, x, y=None, augment_labels=None):
         # Mapping.
         emb = self.map_noise(noise_labels)
