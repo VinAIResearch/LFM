@@ -4,6 +4,7 @@ from torchvision.datasets import CIFAR10
 from datasets_prep.lsun import LSUN
 from datasets_prep.stackmnist_data import StackedMNIST, _data_transforms_stacked_mnist
 from datasets_prep.lmdb_datasets import LMDBDataset
+from datasets_prep.inpainting_dataset import InpaintingTrainDataset
 
 def get_dataset(args):
     if args.dataset == 'cifar10':
@@ -58,4 +59,16 @@ def get_dataset(args):
         ])
         dataset = ImageLMDB(db_path='./dataset/celeba-lmdb-1k/', db_name='celeba_1024',
                             transform=train_transform, backend="pil")
+    return dataset
+
+
+def get_inpainting_dataset(args):
+    from datasets_prep.inpaint_preprocess.mask import get_mask_generator
+    transform = transforms.Compose([
+        transforms.Normalize(0.5, 0.5)
+    ])
+    mask_gen = get_mask_generator(None, None)
+    dataset = InpaintingTrainDataset(indir="dataset/data256x256/",
+                                     mask_generator=mask_gen,
+                                     transform=None)
     return dataset
