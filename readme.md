@@ -3,9 +3,9 @@
 Updates:
 [x] Support Classifier-free guidance for Karras Euler sampler
 
-[] Support Karras Heun sampler
+[x] Support Karras Heun sampler (to use, pls set args.method == "stochastic")
 
-[x] Support Karras Euler sampler
+[x] Support Karras Euler sampler (to use, pls set args.method == "euler")
 
 [x] Support DiT for unconditional
 

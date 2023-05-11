@@ -349,15 +349,15 @@ def karras_stochastic_sampler(
     s_tmax=float("inf"),
     s_noise=1.0,
 ):
-    t_max_rho = t_max ** (1 / rho)
-    t_min_rho = t_min ** (1 / rho)
+    # t_max_rho = t_max ** (1 / rho)
+    # t_min_rho = t_min ** (1 / rho)
     s_in = x.new_ones([x.shape[0]])
 
     # Time step discretization.
-    step_indices = th.arange(steps, dtype=th.float32, device=x.device)
-    t_steps = (t_max_rho + step_indices / (steps - 1) * (t_min_rho - t_max_rho)) ** rho
-    t_steps = th.cat([t_steps, th.zeros_like(t_steps[:1])]) # t_N = 0
-    print(t_steps)
+    # step_indices = th.arange(steps, dtype=th.float32, device=x.device)
+    # t_steps = (t_max_rho + step_indices / (steps - 1) * (t_min_rho - t_max_rho)) ** rho
+    # t_steps = th.cat([t_steps, th.zeros_like(t_steps[:1])]) # t_N = 0
+    t_steps = sigmas
 
     x_next = x
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
@@ -381,7 +381,6 @@ def karras_stochastic_sampler(
             # d_prime = (x_next - denoised) / t_next
             d_prime = denoised
             x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
-            print(t_next - t_hat)
     
     return x_next
 
