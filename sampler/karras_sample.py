@@ -47,6 +47,7 @@ def karras_sample(
         "progdist": sample_progdist,
         "euler": sample_euler,
         "multistep": stochastic_iterative_sampler,
+        "stochastic": karras_stochastic_sampler,
     }[sampler]
 
     if sampler in ["heun", "dpm"]:
@@ -57,11 +58,19 @@ def karras_sample(
         sampler_args = dict(
             ts=ts, t_min=sigma_min, t_max=sigma_max, rho=rho, steps=steps
         )
+    elif sampler == "stochastic":
+        sampler_args = dict(
+            s_churn=s_churn, s_tmin=s_tmin, s_tmax=s_tmax, s_noise=s_noise,
+            t_min=sigma_min, t_max=sigma_max, rho=rho, steps=steps,
+        )
     else:
         sampler_args = {}
 
     def denoiser(x_t, sigma):
-        denoised = model(sigma, x_t, **model_kwargs)
+        if model_kwargs.get("cfg_scale", 1.) > 1.:
+            denoised = model.forward_with_cfg(sigma, x_t, **model_kwargs)
+        else:
+            denoised = model(sigma, x_t, **model_kwargs)
         if clip_denoised:
             denoised = denoised.clamp(-1, 1)
         return denoised
@@ -292,7 +301,7 @@ def sample_onestep(
 ):
     """Single-step generation from a distilled model."""
     s_in = x.new_ones([x.shape[0]])
-    return distiller(x, sigmas[0] * s_in)
+    return x - distiller(x, sigmas[0] * s_in)
 
 
 @th.no_grad()
@@ -315,12 +324,66 @@ def stochastic_iterative_sampler(
 
     for i in range(len(ts) - 1):
         t = (t_max_rho + ts[i] / (steps - 1) * (t_min_rho - t_max_rho)) ** rho
-        x0 = distiller(x, t * s_in)
+        # x0 = distiller(x, t * s_in)
         next_t = (t_max_rho + ts[i + 1] / (steps - 1) * (t_min_rho - t_max_rho)) ** rho
         next_t = np.clip(next_t, t_min, t_max)
+        x0 = x + (next_t - t) * distiller(x, t * s_in)
         x = x0 + generator.randn_like(x) * np.sqrt(next_t**2 - t_min**2)
 
     return x
+
+
+def karras_stochastic_sampler(
+    distiller,
+    x,
+    sigmas,
+    generator,
+    progress=False,
+    callback=None,
+    t_min=0.002,
+    t_max=80.0,
+    rho=7.0,
+    steps=40,
+    s_churn=0.,
+    s_tmin=0.0,
+    s_tmax=float("inf"),
+    s_noise=1.0,
+):
+    t_max_rho = t_max ** (1 / rho)
+    t_min_rho = t_min ** (1 / rho)
+    s_in = x.new_ones([x.shape[0]])
+
+    # Time step discretization.
+    step_indices = th.arange(steps, dtype=th.float32, device=x.device)
+    t_steps = (t_max_rho + step_indices / (steps - 1) * (t_min_rho - t_max_rho)) ** rho
+    t_steps = th.cat([t_steps, th.zeros_like(t_steps[:1])]) # t_N = 0
+    print(t_steps)
+
+    x_next = x
+    for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
+        x_cur = x_next
+
+        # Increase noise temporarily.
+        gamma = min(s_churn / steps, np.sqrt(2) - 1) if s_tmin <= t_cur <= s_tmax else 0
+        t_hat = th.as_tensor(t_cur + gamma * t_cur)
+        x_hat = x_cur + (t_hat ** 2 - t_cur ** 2).sqrt() * s_noise * generator.randn_like(x_cur)
+
+        # Euler step.
+        denoised = distiller(x_hat, t_hat * s_in)
+        # d_cur = (x_hat - denoised) / t_hat
+        d_cur = denoised
+
+        x_next = x_hat + (t_next - t_hat) * d_cur
+
+        # Apply 2nd order correction.
+        if i < steps - 1:
+            denoised = distiller(x_next, t_next * s_in)
+            # d_prime = (x_next - denoised) / t_next
+            d_prime = denoised
+            x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
+            print(t_next - t_hat)
+    
+    return x_next
 
 
 @th.no_grad()
@@ -358,4 +421,3 @@ def sample_progdist(
         x = x + d * dt
 
     return x
-

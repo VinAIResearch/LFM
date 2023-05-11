@@ -1,6 +1,7 @@
 # Latent Flow Matching
 
 Updates:
+[x] Support Classifier-free guidance for Karras Euler sampler
 
 [] Support Karras Heun sampler
 
