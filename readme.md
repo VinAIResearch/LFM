@@ -2,6 +2,10 @@
 
 Updates:
 
+[] Support Karras Heun sampler
+
+[x] Support Karras Euler sampler
+
 [x] Support DiT for unconditional
 
 [x] Support class conditional for ImageNet (both EDM and DiT)
