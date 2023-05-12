@@ -1,3 +1,4 @@
+
 # ---------------------------------------------------------------
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 #
@@ -8,7 +9,7 @@
 import argparse
 import torch
 import numpy as np
-# from torchdiffeq import odeint
+import resnet
 from torchdiffeq import odeint_adjoint as odeint
 import os
 import torch.nn as nn
@@ -16,12 +17,44 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 from datasets_prep import get_dataset
-from models.util import get_flow_model
-
 from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
+import time
 
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def accuracy(output, target, topk=(1,)):
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res
 
 
 def copy_source(file, output_dir):
@@ -48,6 +81,9 @@ def train(rank, gpu, args):
     
     batch_size = args.batch_size
     
+    
+
+    
     dataset = get_dataset(args)
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                     num_replicas=args.world_size,
@@ -60,7 +96,7 @@ def train(rank, gpu, args):
                                                sampler=train_sampler,
                                                drop_last = True)
     
-    model = get_flow_model(args).to(device)
+    model = resnet.resnet50().to(device)
     broadcast_params(model.parameters())
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas = (args.beta1, args.beta2))
     
@@ -70,10 +106,10 @@ def train(rank, gpu, args):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
     
     #ddp
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=True)
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
 
     exp = args.exp
-    parent_dir = "./saved_info/flow_matching/{}".format(args.dataset)
+    parent_dir = "./saved_info/velocity_classifier/{}".format(args.dataset)
 
     exp_path = os.path.join(parent_dir, exp)
     if rank == 0:
@@ -93,44 +129,52 @@ def train(rank, gpu, args):
         print("=> loaded checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
     else:
-        global_step, epoch, init_epoch = 0, 0, 0
+        epoch, init_epoch = 0, 0, 0
     
     
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
-       
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        losses = AverageMeter()
+        top1 = AverageMeter()
+        top5 = AverageMeter()
+        end = time.time()
         for iteration, (x, y) in enumerate(data_loader):
+            data_time.update(time.time() - end)
             x_1 = x.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
             model.zero_grad()
             #sample t
-            t = torch.rand((x_1.size(0),) , device=device)
-            t = t.view(-1, 1, 1, 1)
             x_0 = torch.randn_like(x_1)
-            v_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
-            u = (1 - 1e-5) * x_0 - x_1
+            u = x_0 - x_1
             
-            loss = F.mse_loss(model(t.squeeze(), v_t), u)
+            output = model(u)
+            loss = torch.nn.CrossEntropyLoss()(model(u), y)
+            losses.update(loss.item(), batch_size)
+            acc1, acc5 = accuracy(output, y, topk=(1, 5))
+            top1.update(acc1[0], batch_size)
+            top5.update(acc5[0], batch_size)
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            
             loss.backward()
             optimizer.step()
             
-            global_step += 1
-            if iteration % 100 == 0:
-                if rank == 0:
-                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
+                    
         
         if not args.no_lr_decay:
             scheduler.step()
         
         if rank == 0:
-            rand = torch.randn_like(x_1)
-            fake_sample = sample_from_model(model, rand)[-1]
-            
-            torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True)
-            
+            print('epoch {}, Loss: {}, Top1: {}, Top5: {}, Data Time: {}'.format(epoch, loss.item(), top1.avg, top5.avg, data_time.avg))
             if args.save_content:
                 if epoch % args.save_content_every == 0:
                     print('Saving content.')
-                    content = {'epoch': epoch + 1, 'global_step': global_step, 'args': args,
+                    content = {'epoch': epoch + 1, 'args': args,
                                'model_dict': model.state_dict(), 'optimizer': optimizer.state_dict(),
                                'scheduler': scheduler.state_dict()}
                     
@@ -171,41 +215,12 @@ if __name__ == '__main__':
                             help='size of image')
     parser.add_argument('--num_in_channels', type=int, default=3,
                             help='in channel image')
-    parser.add_argument('--num_out_channels', type=int, default=3,
-                            help='in channel image')
-    parser.add_argument('--nf', type=int, default=256,
-                            help='channel of image')
-    parser.add_argument('--centered', action='store_false', default=True,
-                            help='-1,1 scale')
-    parser.add_argument("--resamp_with_conv", type=bool, default=True)
-    parser.add_argument('--num_res_blocks', type=int, default=2,
-                            help='number of resnet blocks per scale')
-    parser.add_argument('--num_heads', type=int, default=4,
-                            help='number of head')
-    parser.add_argument('--num_head_upsample', type=int, default=-1,
-                            help='number of head upsample')
-    parser.add_argument('--num_head_channels', type=int, default=-1,
-                            help='number of head channels')
-    parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,),
-                            help='resolution of applying attention')
-    parser.add_argument('--ch_mult', nargs='+', type=int, default=(1,1,2,2,4,4),
-                            help='channel mult')
-    parser.add_argument('--dropout', type=float, default=0.,
-                            help='drop-out rate')
-    parser.add_argument('--num_classes', type=int, default=None,
-                            help='num classes')
-    parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
-    parser.add_argument("--resblock_updown", type=bool, default=False)
-    parser.add_argument("--use_new_attention_order", type=bool, default=False)
     
-    
-    #geenrator and training
-    parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
+    parser.add_argument('--exp', default='test', help='name of experiment')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
-    parser.add_argument('--num_timesteps', type=int, default=200)
 
     parser.add_argument('--batch_size', type=int, default=128, help='input batch size')
-    parser.add_argument('--num_epoch', type=int, default=1200)
+    parser.add_argument('--num_epoch', type=int, default=500)
 
     parser.add_argument('--lr', type=float, default=5e-4, help='learning rate g')
     
@@ -221,7 +236,7 @@ if __name__ == '__main__':
     
 
     parser.add_argument('--save_content', action='store_true',default=False)
-    parser.add_argument('--save_content_every', type=int, default=50, help='save content for resuming every x epochs')
+    parser.add_argument('--save_content_every', type=int, default=10, help='save content for resuming every x epochs')
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
    
     ###ddp

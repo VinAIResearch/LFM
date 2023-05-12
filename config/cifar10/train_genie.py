@@ -68,7 +68,7 @@ def get_config():
     config.sampler.n_steps = 16
     config.sampler.denoising = False
     config.sampler.quadratic_striding = False
-    config.sampler.eps = 1e-3
+    config.sampler.eps = 0
     config.sampler.denoising = False
     # optimizer config
     config.optim.optimizer = 'Adam'
@@ -78,7 +78,7 @@ def get_config():
     config.optim.decay_scheduler = 50000
     # training config
     config.train.seed = 0
-    config.train.eps = 1e-3
+    config.train.eps = 0
     config.train.n_iters = 20000
     config.train.n_warmup_iters = 0
     config.train.batch_size = 16

@@ -68,4 +68,4 @@ def test():
     # torchvision.utils.save_image(mask_, "imask_.png", normalize = True)
     # torchvision.utils.save_image(masked_img_, "image_mask_.png", normalize=True)
     
-test()
+# test()
