@@ -22,6 +22,8 @@ from models import create_network
 
 from pytorch_fid.fid_score import calculate_fid_given_paths
 from ddp_utils import init_processes
+from sampler.karras_sample import karras_sample
+from sampler.random_util import get_generator
 
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
 FIXER_SOLVER = ["euler", "rk4", "midpoint"]
@@ -70,6 +72,27 @@ def sample_from_model(model, x_0, args):
     return fake_image
 
 
+def sample_from_model2(model, x, model_kwargs, generator, args):
+    sample = karras_sample(
+            model,
+            x,
+            steps=args.num_steps,
+            model_kwargs=model_kwargs,
+            device=x.device,
+            clip_denoised=False,
+            sigma_min=1e-5,
+            sigma_max=1.0,
+            s_tmin=0.,
+            s_tmax=1.0,
+            s_churn=0.,
+            sampler=args.method,
+            rho=1.0,
+            ts=range(0, args.num_steps, 15),
+            generator=generator,
+        )
+    return sample
+
+
 def sample_and_test(rank, gpu, args):
     from diffusers.models import AutoencoderKL
     torch.set_grad_enabled(False)
@@ -78,6 +101,7 @@ def sample_and_test(rank, gpu, args):
     torch.cuda.manual_seed_all(args.seed + rank)
 
     device = torch.device('cuda:{}'.format(gpu))
+
     
     if args.dataset == 'cifar10':
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
@@ -152,6 +176,9 @@ def sample_and_test(rank, gpu, args):
         std_syn = np.std(timings)
         print("Inference time: {:.2f}+/-{:.2f}ms".format(mean_syn, std_syn))
         exit(0)
+
+    # seed generator
+    generator = get_generator(args.generator, args.batch_size, args.seed)
     
     if args.compute_fid:
         print("Compute fid")
@@ -170,8 +197,26 @@ def sample_and_test(rank, gpu, args):
 
         for i in pbar:
             with torch.no_grad():
-                z_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-                fake_sample = sample_from_model(model, z_0, args)[-1]
+                # z_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+                # y = None if args.num_classes in [None, 1] else torch.randint(args.num_classes, (args.batch_size,), device=device) 
+                # sample_model = partial(model, y=y)
+                # fake_sample = sample_from_model(sample_model, z_0, args)[-1]
+
+                x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+                if args.num_classes in [None, 1]:
+                    model_kwargs = {}
+                else:
+                    y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
+                    # Setup classifier-free guidance:
+                    x = torch.cat([x, x], 0)
+                    y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
+                    y = torch.cat([y, y_null], 0)
+                    model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+
+                fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
+                if args.cfg_scale > 1.:
+                    fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
+
                 fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
                 fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
                 for j, x in enumerate(fake_image):
@@ -193,17 +238,41 @@ def sample_and_test(rank, gpu, args):
     else:
         print("Inference")
         with torch.no_grad():
-            x_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-            y = None if args.num_classes in [None, 1] else torch.randint(args.num_classes, (args.batch_size,), device=device) 
-            sample_model = partial(model, y=y)
-            fake_sample = sample_from_model(sample_model, x_0, args)[-1]
+            # x_0 = torch.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+            # y = None if args.num_classes in [None, 1] else torch.randint(args.num_classes, (args.batch_size,), device=device) 
+            # sample_model = partial(model, y=y)
+            # fake_sample = sample_from_model(sample_model, x_0, args)[-1]
+
+            x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+            if args.num_classes in [None, 1]:
+                model_kwargs = {}
+            else:
+                y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
+                # Setup classifier-free guidance:
+                x = torch.cat([x, x], 0)
+                y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
+                y = torch.cat([y, y_null], 0)
+                model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+
+            fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
+            if args.cfg_scale > 1.:
+                fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
+
+            # steps = torch.linspace(1.0, 0.0, 50, device="cuda")
+            # for i in range(len(steps)-1):
+            #     fake_sample = model(torch.tensor([1.], device="cuda"), x_0)
+            #     fake_sample = x_0 - (steps[i] - steps[i+1]) * fake_sample
+            #     x_0 = fake_sample
             fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
         fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
         torchvision.utils.save_image(fake_image, './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol))
+        print("Samples are save at './samples_{}_{}_{}_{}.jpg".format(args.dataset, args.method, args.atol, args.rtol))
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('ddgan parameters')
+    parser = argparse.ArgumentParser('flow-matching parameters')
+    parser.add_argument('--generator', type=str, default="determ",
+                        help='type of seed generator', choices=["dummy", "determ", "determ-indiv"])
     parser.add_argument('--seed', type=int, default=42,
                         help='seed used for initialization')
     parser.add_argument('--compute_fid', action='store_true', default=False,
@@ -255,6 +324,8 @@ if __name__ == '__main__':
                             help='num classes')
     parser.add_argument('--label_dropout', type=float, default=0.,
                             help='Dropout probability of class labels for classifier-free guidance')
+    parser.add_argument('--cfg_scale', type=float, default=1.,
+                            help='Scale for classifier-free guidance')
 
     # parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
     # parser.add_argument("--resblock_updown", type=bool, default=False)
@@ -267,13 +338,14 @@ if __name__ == '__main__':
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--real_img_dir', default='./pytorch_fid/cifar10_train_stat.npy', help='directory to real images for FID computation')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
-    parser.add_argument('--num_timesteps', type=int, default=200)
+    parser.add_argument('--num_steps', type=int, default=40)
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
     
     # sampling argument
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
-    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", "euler", "midpoint", "rk4"])
+    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", 
+        "euler", "midpoint", "rk4", "heun", "multistep", "stochastic", "dpm"])
     parser.add_argument('--step_size', type=float, default=0.01, help='step_size')
     parser.add_argument('--perturb', action='store_true', default=False)
 
