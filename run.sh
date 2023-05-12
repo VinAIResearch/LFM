@@ -78,6 +78,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python train_flow_latent.py --exp laflo_imn
     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
     --lr 1e-4 --scale_factor 0.18215 \
     --model_type DiT-B/2 --num_classes 1000 --label_dropout 0.1 \
+    --resume \
     --save_content --save_content_every 10 \
     --master_port $MASTER_PORT --num_process_per_node 8 \
 
