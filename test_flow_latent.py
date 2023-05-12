@@ -108,10 +108,12 @@ def sample_and_test(rank, gpu, args):
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
         real_img_dir = 'pytorch_fid/celebahq_stat.npy'
-    elif args.dataset == 'lsun':
+    elif args.dataset == 'lsun_church':
         real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
     elif args.dataset == "ffhq_256":
         real_img_dir = 'pytorch_fid/ffhq_stat.npy'
+    elif args.dataset == "lsun_bedroom":
+        real_img_dir = 'pytorch_fid/lsun_bedroom_stat.npy'
     else:
         real_img_dir = args.real_img_dir
     
