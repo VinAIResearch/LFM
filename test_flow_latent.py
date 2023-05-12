@@ -17,6 +17,7 @@ import torchvision
 from torchdiffeq import odeint_adjoint as odeint
 
 import torch.distributed as dist
+from torch.multiprocessing import Process
 
 from models import create_network
 
@@ -26,7 +27,7 @@ from sampler.karras_sample import karras_sample
 from sampler.random_util import get_generator
 
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
-FIXER_SOLVER = ["euler", "rk4", "midpoint"]
+FIXER_SOLVER = ["euler", "rk4", "midpoint", "stochastic"]
 
 
 class NFECount(nn.Module):
@@ -130,8 +131,10 @@ def sample_and_test(rank, gpu, args):
     del ckpt
         
     iters_needed = args.n_sample //args.batch_size
-    save_dir = "./generated_samples/{}/exp{}_ep{}_m{}_s{}".format(args.dataset, args.exp, args.epoch_id, args.method, args.num_steps)
+    save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
+    if args.method in FIXER_SOLVER:
+        save_dir += "_s{}".format(args.num_steps)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -179,9 +182,10 @@ def sample_and_test(rank, gpu, args):
                     else:
                         y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
                         # Setup classifier-free guidance:
-                        x = torch.cat([x, x], 0)
-                        y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
-                        y = torch.cat([y, y_null], 0)
+                        if args.cfg_scale > 1.:
+                            x = torch.cat([x, x], 0)
+                            y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
+                            y = torch.cat([y, y_null], 0)
                         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
 
                     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
@@ -226,9 +230,10 @@ def sample_and_test(rank, gpu, args):
                     else:
                         y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
                         # Setup classifier-free guidance:
-                        x = torch.cat([x, x], 0)
-                        y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
-                        y = torch.cat([y, y_null], 0)
+                        if args.cfg_scale > 1.:
+                            x = torch.cat([x, x], 0)
+                            y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
+                            y = torch.cat([y, y_null], 0)
                         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
 
                     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
@@ -256,8 +261,8 @@ def sample_and_test(rank, gpu, args):
     else:
         print("Inference")
         with torch.no_grad():
+            x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
             if not args.use_karras_samplers:
-                x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
                 y = None if args.num_classes in [None, 1] else torch.randint(args.num_classes, (args.batch_size,), device=device) 
                 sample_model = partial(model, y=y)
                 fake_sample = sample_from_model(sample_model, x, args)[-1]
@@ -267,9 +272,10 @@ def sample_and_test(rank, gpu, args):
                 else:
                     y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
                     # Setup classifier-free guidance:
-                    x = torch.cat([x, x], 0)
-                    y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
-                    y = torch.cat([y, y_null], 0)
+                    if args.cfg_scale > 1.:
+                        x = torch.cat([x, x], 0)
+                        y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
+                        y = torch.cat([y, y_null], 0)
                     model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
 
                 fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
@@ -384,7 +390,7 @@ if __name__ == '__main__':
     args.world_size = args.num_proc_node * args.num_process_per_node
     size = args.num_process_per_node
 
-    if size > 1 and args.compute_fid == False:
+    if size > 1 and args.compute_fid:
         processes = []
         for rank in range(size):
             args.local_rank = rank

@@ -36,19 +36,18 @@ export PYTHONFAULTHANDLER=1
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
 MODEL_TYPE=DiT-L/2
-EPOCH_ID=475
-DATASET=celeba_256
-EXP=laflo_celeb_f8_dit
+EPOCH_ID=425
+DATASET=lsun_church
+EXP=laflo_church_f8_dit
 
-CUDA_VISIBLE_DEVICES=0 python test_flow_latent.py --exp ${EXP} \
+CUDA_VISIBLE_DEVICES=0,1,2,3 python test_flow_latent.py --exp ${EXP} \
     --dataset ${DATASET} --batch_size 100 --epoch_id ${EPOCH_ID} \
     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
     --model_type ${MODEL_TYPE} --num_classes 1 --label_dropout 0. \
-    --master_port $MASTER_PORT \
-    --method stochastic --num_steps 10 \
-    # --measure_time \
-    # --compute_fid --output_log ${EXP}_${EPOCH_ID}_heun25.log \
+    --master_port $MASTER_PORT --num_process_per_node 4 \
+    --compute_fid --output_log ${EXP}_${EPOCH_ID}_adaptive.log \
+    # --method stochastic --num_steps 50 \
     # --method euler --step_size 0.02 \
     # --measure_time \
     # --compute_nfe \
