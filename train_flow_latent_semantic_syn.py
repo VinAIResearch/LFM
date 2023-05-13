@@ -88,7 +88,7 @@ def train(rank, gpu, args):
         dataset = CocoImagesAndCaptionsTrain(size=256, onehot_segmentation=True, use_stuffthing=True)
         num_cls = 182
     elif args.dataset == "ade20k":
-        dataset = ADE20kTrain(size=256, crop_size=None, random_crop=False)
+        dataset = ADE20kTrain(size=256, crop_size=256, random_crop=False)
         num_cls = 151
     
     
@@ -161,10 +161,9 @@ def train(rank, gpu, args):
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
        
-        for iteration, batch in enumerate(data_loader):
-            image = batch["image"]
-            seg = batch["segmentation"].to(device, non_blocking=True).float()
-            seg = rearrange(seg, "b h w c -> b c h w")
+        for iteration, (image, segmentation) in enumerate(data_loader):
+            segmentation = torch.nn.functional.one_hot(segmentation, num_cls).permute(0, 3, 1, 2)
+            seg = segmentation.to(device, non_blocking=True).float()
             x_1 = image.to(device, non_blocking=True)
             model.zero_grad()
             with torch.no_grad():
@@ -186,7 +185,6 @@ def train(rank, gpu, args):
             if iteration % 100 == 0:
                 if rank == 0:
                     print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
-            break
             
 
         if not args.no_lr_decay:
@@ -202,6 +200,7 @@ def train(rank, gpu, args):
                 fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
             torchvision.utils.save_image(to_rgb(seg), os.path.join(exp_path, 'image_epoch_seg_{}.png'.format(epoch)), normalize=True)
             torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True)
+            torchvision.utils.save_image(image[:4], os.path.join(exp_path, 'image_epoch_{}_gt.png'.format(epoch)), normalize=True)
             del fake_image, fake_sample, model_cond, c
             if args.save_content:
                 if epoch % args.save_content_every == 0:
@@ -340,5 +339,4 @@ if __name__ == '__main__':
             p.join()
     else:
         print('starting in debug mode')
-        
         init_processes(0, size, train, args)

@@ -6,7 +6,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 import torch
 from datasets_prep.coco import SegmentationBase # for examples included in repo
-import torchvision.transforms as transforms
+
 
 class Examples(SegmentationBase):
     def __init__(self, size=256, random_crop=False, interpolation="bicubic"):
@@ -37,36 +37,59 @@ class ADE20kBase(Dataset):
             "segmentation_path_": [os.path.join(self.data_root, l.split(" ")[1]) for l in self.image_paths]
         }
         
+
+        size = None if size is not None and size<=0 else size
         self.size = size
-        self.image_transforms = transforms.Compose([
-            transforms.Resize((size, size), interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.ToTensor(),
-            transforms.Normalize(0.5, 0.5)
-        ])
-        
-        self.segmentation_transforms = transforms.Compose([
-            transforms.Resize((size, size), interpolation=transforms.InterpolationMode.NEAREST),
-        ])
+        if crop_size is None:
+            self.crop_size = size if size is not None else None
+        else:
+            self.crop_size = crop_size
+        if self.size is not None:
+            self.interpolation = interpolation
+            self.interpolation = {
+                "nearest": cv2.INTER_NEAREST,
+                "bilinear": cv2.INTER_LINEAR,
+                "bicubic": cv2.INTER_CUBIC,
+                "area": cv2.INTER_AREA,
+                "lanczos": cv2.INTER_LANCZOS4}[self.interpolation]
+            self.image_rescaler = albumentations.SmallestMaxSize(max_size=self.size,
+                                                                 interpolation=self.interpolation)
+            self.segmentation_rescaler = albumentations.SmallestMaxSize(max_size=self.size,
+                                                                        interpolation=cv2.INTER_NEAREST)
+
+        if crop_size is not None:
+            self.center_crop = not random_crop
+            if self.center_crop:
+                self.cropper = albumentations.CenterCrop(height=self.crop_size, width=self.crop_size)
+            else:
+                self.cropper = albumentations.RandomCrop(height=self.crop_size, width=self.crop_size)
+            self.preprocessor = self.cropper
 
     def __len__(self):
         return self._length
 
     def __getitem__(self, i):
-        print(i)
+        # print(i)
         example = dict((k, self.labels[k][i]) for k in self.labels)
         image = Image.open(example["file_path_"])
         if not image.mode == "RGB":
             image = image.convert("RGB")
-        image = self.image_transforms(image)
+        image = np.array(image).astype(np.uint8)
+        if self.size is not None:
+            image = self.image_rescaler(image=image)["image"]
         segmentation = Image.open(example["segmentation_path_"])
-        segmentation = self.segmentation_transforms(segmentation)
-        segmentation = np.asarray(segmentation)
+        segmentation = np.array(segmentation).astype(np.uint8)
+        if self.size is not None:
+            segmentation = self.segmentation_rescaler(image=segmentation)["image"]
+        if self.size is not None:
+            processed = self.preprocessor(image=image, mask=segmentation)
+            image = processed["image"]
+            segmentation = processed["mask"]
 
-        example["image"] = image
-        onehot = np.eye(self.n_labels)[segmentation]
-        example["segmentation"] = torch.from_numpy(onehot)
-        
-        return example
+        image = (image/127.5 - 1.0).astype(np.float32)
+        image = torch.from_numpy(image).permute(2, 0, 1)
+        segmentation = torch.from_numpy(segmentation).long()
+        return image, segmentation
 
 
 class ADE20kTrain(ADE20kBase):
@@ -85,11 +108,9 @@ class ADE20kValidation(ADE20kBase):
 
 
 if __name__ == "__main__":
-    dset = ADE20kValidation()
-    ex = dset[0]
-    for k in ["image", "scene_category", "segmentation"]:
-        print(type(ex[k]))
-        try:
-            print(ex[k].shape)
-        except:
-            print(ex[k])
+    pass
+    # dataset = ADE20kTrain(config=None, size=256, crop_size=256)
+    # dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True, num_workers=4)
+    # image, segmentation = next(iter(dataloader))
+    # print(image.shape)
+    # print(segmentation.shape)
