@@ -41,7 +41,7 @@ echo "----------------------------"
 echo $MODEL_TYPE $EPOCH_ID $DATASET $EXP
 echo "----------------------------"
 
-python test_flow_latent.py --exp $EXP \
+CUDA_VISIBLE_DEVICES={device} python test_flow_latent.py --exp $EXP \
     --dataset $DATASET --batch_size 100 --epoch_id $EPOCH_ID \
     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
@@ -49,21 +49,22 @@ python test_flow_latent.py --exp $EXP \
     --method {method} --num_steps {num_steps} \
     --compute_fid --output_log $OUTPUT_LOG \
     --master_port $MASTER_PORT  --num_process_per_node {num_gpus} \
-
+    # --use_karras_samplers \
 
 """
 
 ###### ARGS
-model_type = "DiT-L/2" # or "DiT-L/2" or "adm"
-dataset = "celeba_256"
-exp = "laflo_celeb_f8_dit"
-epochs = [475]
-BASE_PORT = 8014
+model_type = "adm" # or "DiT-L/2" or "adm"
+dataset = "lsun_bedroom"
+exp = "laflo_bed_f8_lr5e-5"
+BASE_PORT = 8016
+num_gpus = 1
+device = "1"
 
 config = pd.DataFrame({
-    "epochs": [475]*2,
-    "num_steps": [20, 15],
-    "methods": ['stochastic']*2,
+    "epochs": [375],
+    "num_steps": [50],
+    "methods": ['dopri5'],
 })
 print(config)
 
@@ -73,7 +74,6 @@ slurm_output = f"/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurm_scrip
 output_log = f"{slurm_output}/log"
 os.makedirs(slurm_output, exist_ok=True)
 job_name = "test"
-num_gpus = 1
 
 for idx, row in config.iterrows():
     slurm_command = slurm_template.format(
@@ -88,6 +88,7 @@ for idx, row in config.iterrows():
         output_log=output_log,
         method=row.methods,
         num_steps=row.num_steps,
+        device=device,
     )
     mode = "w" if idx == 0 else "a"
     with open(slurm_file_path, mode) as f:

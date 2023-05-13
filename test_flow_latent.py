@@ -132,17 +132,19 @@ def sample_and_test(rank, gpu, args):
 
     del ckpt
         
-    iters_needed = args.n_sample //args.batch_size
+    iters_needed = args.n_sample // args.batch_size
     save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
-    if args.method in FIXER_SOLVER:
-        save_dir += "_s{}".format(args.num_steps)
+    # if args.method in FIXER_SOLVER:
+    #     save_dir += "_s{}".format(args.num_steps)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     # seed generator
-    generator = get_generator(args.generator, args.batch_size, args.seed)
+    #### seed should be aligned with rank 
+    #### as the same seed can cause identical generation on other gpus
+    generator = get_generator(args.generator, args.batch_size, args.seed + rank) 
 
     if args.compute_nfe:
         print("Compute nfe")

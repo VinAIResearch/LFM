@@ -17,7 +17,7 @@
 set -x
 set -e
 
-export MASTER_PORT=12003
+export MASTER_PORT=12004
 export WORLD_SIZE=1
 
 export SLURM_JOB_NODELIST=$(scontrol show hostnames $SLURM_JOB_NODELIST | tr '\n' ' ')
@@ -35,11 +35,12 @@ export PYTHONFAULTHANDLER=1
 
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-MODEL_TYPE=adm
-EPOCH_ID=300
-DATASET=lsun_bedroom
-EXP=laflo_bed_f8
+MODEL_TYPE=DiT-L/2
+EPOCH_ID=475
+DATASET=lsun_church
+EXP=laflo_church_f8_dit
 METHOD=dopri5
+STEPS=0
 
 CUDA_VISIBLE_DEVICES=0 python test_flow_latent.py --exp ${EXP} \
     --dataset ${DATASET} --batch_size 100 --epoch_id ${EPOCH_ID} \
@@ -47,11 +48,11 @@ CUDA_VISIBLE_DEVICES=0 python test_flow_latent.py --exp ${EXP} \
     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
     --model_type ${MODEL_TYPE} --num_classes 1 --label_dropout 0. \
     --master_port $MASTER_PORT --num_process_per_node 1 \
-    --compute_fid --output_log ${EXP}_${EPOCH_ID}_${METHOD}.log \
-    # --method ${METHOD} --num_steps 35 \
+    --compute_fid --output_log ${EXP}_${EPOCH_ID}_${METHOD}${STEPS}.log \
+    --method ${METHOD} --num_steps ${STEPS} \
     # --use_karras_samplers \
-    # --method euler --step_size 0.02 \
     # --measure_time \
+    # --method euler --step_size 0.02 \
     # --compute_nfe \
 
 # CUDA_VISIBLE_DEVICES=0 python test_flow_latent.py --exp laflo_celeb_f8_dit \
