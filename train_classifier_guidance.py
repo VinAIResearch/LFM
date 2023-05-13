@@ -8,7 +8,7 @@
 import argparse
 import torch
 import numpy as np
-from encoder_classifier import create_classifier, classifier_defaults
+from models.encoder_classifier import create_classifier, classifier_defaults
 from torchdiffeq import odeint_adjoint as odeint
 import os
 import torch.nn as nn

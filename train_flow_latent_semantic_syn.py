@@ -17,6 +17,7 @@ import torch.optim as optim
 import torchvision
 from datasets_prep.coco import CocoImagesAndCaptionsTrain, CocoImagesAndCaptionsValidation
 from datasets_prep.ade20k import ADE20kTrain, ADE20kValidation
+from datasets_prep.celeb_mask import CelebAMaskTrain, CelebAMaskValidation
 from models.util import get_flow_model
 from torch.multiprocessing import Process
 import torch.distributed as dist
@@ -90,6 +91,9 @@ def train(rank, gpu, args):
     elif args.dataset == "ade20k":
         dataset = ADE20kTrain(size=256, crop_size=256, random_crop=False)
         num_cls = 151
+    elif args.dataset == "celeba":
+        dataset = CelebAMaskTrain(size=256, crop_size=256)
+        num_cls = 19
     
     
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
@@ -184,8 +188,7 @@ def train(rank, gpu, args):
             global_step += 1
             if iteration % 100 == 0:
                 if rank == 0:
-                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
-            
+                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))            
 
         if not args.no_lr_decay:
             scheduler.step()

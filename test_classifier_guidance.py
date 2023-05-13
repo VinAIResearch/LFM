@@ -8,8 +8,7 @@ from torchdiffeq import odeint_adjoint as odeint
 from models.util import get_flow_model
 import torchvision
 from pytorch_fid.fid_score import calculate_fid_given_paths
-import resnet
-from encoder_classifier import create_classifier, classifier_defaults
+from models.encoder_classifier import create_classifier, classifier_defaults
 
 
 def args_to_dict(args, keys):
