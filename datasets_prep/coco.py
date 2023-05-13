@@ -6,6 +6,7 @@ from PIL import Image
 from tqdm import tqdm
 from torch.utils.data import Dataset
 import cv2
+import torch
 
 class SegmentationBase(Dataset):
     def __init__(self,
@@ -77,10 +78,10 @@ class SegmentationBase(Dataset):
             processed = {"image": image,
                          "mask": segmentation
                          }
-        example["image"] = (processed["image"]/127.5 - 1.0).astype(np.float32)
+        example["image"] = torch.from_numpy((processed["image"]/127.5 - 1.0).astype(np.float32)).permute(2, 0, 1)
         segmentation = processed["mask"]
         onehot = np.eye(self.n_labels)[segmentation]
-        example["segmentation"] = onehot
+        example["segmentation"] = torch.from_numpy(onehot).permute(2, 0, 1)
         return example
 
 class Examples(SegmentationBase):
@@ -122,14 +123,14 @@ class CocoBase(Dataset):
                                             "captions_val2017.json"]
         if self.stuffthing:
             self.segmentation_prefix = (
-                "data/cocostuffthings/val2017" if
+                "dataset/coco/cocostuffthings/val2017" if
                 data_json.endswith("captions_val2017.json") else
-                "data/cocostuffthings/train2017")
+                "dataset/coco/cocostuffthings/train2017")
         else:
             self.segmentation_prefix = (
-                "data/coco/annotations/stuff_val2017_pixelmaps" if
+                "dataset/coco/annotations/stuff_val2017_pixelmaps" if
                 data_json.endswith("captions_val2017.json") else
-                "data/coco/annotations/stuff_train2017_pixelmaps")
+                "dataset/coco/annotations/stuff_train2017_pixelmaps")
 
         imagedirs = self.json_data["images"]
         self.labels = {"image_ids": list()}
@@ -197,7 +198,7 @@ class CocoBase(Dataset):
             # make it one hot
             n_labels = 183
             flatseg = np.ravel(segmentation)
-            onehot = np.zeros((flatseg.size, n_labels), dtype=np.bool)
+            onehot = np.zeros((flatseg.size, n_labels), dtype=np.bool_)
             onehot[np.arange(flatseg.size), flatseg] = True
             onehot = onehot.reshape(segmentation.shape + (n_labels,)).astype(int)
             segmentation = onehot
@@ -226,8 +227,8 @@ class CocoImagesAndCaptionsTrain(CocoBase):
     """returns a pair of (image, caption)"""
     def __init__(self, size, onehot_segmentation=False, use_stuffthing=False, crop_size=None, force_no_crop=False):
         super().__init__(size=size,
-                         dataroot="data/coco/train2017",
-                         datajson="data/coco/annotations/captions_train2017.json",
+                         dataroot="dataset/coco/train2017",
+                         datajson="dataset/coco/annotations/captions_train2017.json",
                          onehot_segmentation=onehot_segmentation,
                          use_stuffthing=use_stuffthing, crop_size=crop_size, force_no_crop=force_no_crop)
 
@@ -240,8 +241,8 @@ class CocoImagesAndCaptionsValidation(CocoBase):
     def __init__(self, size, onehot_segmentation=False, use_stuffthing=False, crop_size=None, force_no_crop=False,
                  given_files=None):
         super().__init__(size=size,
-                         dataroot="data/coco/val2017",
-                         datajson="data/coco/annotations/captions_val2017.json",
+                         dataroot="dataset/coco/val2017",
+                         datajson="dataset/coco/annotations/captions_val2017.json",
                          onehot_segmentation=onehot_segmentation,
                          use_stuffthing=use_stuffthing, crop_size=crop_size, force_no_crop=force_no_crop,
                          given_files=given_files)
