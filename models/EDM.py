@@ -458,6 +458,21 @@ class DhariwalUNet(torch.nn.Module):
         x = self.out_conv(silu(self.out_norm(x)))
         return x 
 
+    def forward_with_cfg(self, noise_labels, x, y=None, augment_labels=None, cfg_scale=1.0):
+        """
+        Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
+        """
+        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
+        half = x[: len(x) // 2]
+        combined = torch.cat([half, half], dim=0)
+        model_out = self.forward(noise_channels, combined, y, augment_labels)
+        eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
+        cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
+        eps = torch.cat([half_eps, half_eps], dim=0)
+        return torch.cat([eps, rest], dim=1)
+
+
 def get_edm_network(config):
     if config.model_type == "ncsn++":
         model = SongUNet(
