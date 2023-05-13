@@ -48,24 +48,4 @@ def test():
     # torchvision.utils.save_image(mask, "imask.png", normalize = True)
     torchvision.utils.save_image(img, "image.png", normalize=True)
     torchvision.utils.save_image(velocity, "velocity.png", normalize=True)
-    # torchvision.utils.save_image(masked_img, "image_mask.png", normalize=True)
     
-    # print(img.min(), img.max())
-    # print(mask.min(), mask.max())
-    # print(masked_img.min(), masked_img.max())
-    
-    
-    # h = w = 256
-    # mask_ = torch.ones(h, w)
-    # # # zeros will be filled in
-    # mask_[h // 4:3 * h // 4, w // 4:3 * w // 4] = 0.
-    # mask_ = mask_[None, ...]
-    
-    # img = (img + 1)/2
-    # masked_img_ = (1 - mask_) * img
-    # masked_img_ = masked_img_ * 2 -1
-    
-    # torchvision.utils.save_image(mask_, "imask_.png", normalize = True)
-    # torchvision.utils.save_image(masked_img_, "image_mask_.png", normalize=True)
-    
-# test()
