@@ -8,74 +8,62 @@
 import argparse
 import torch
 import numpy as np
-from encoder_classifier import create_classifier, classifier_defaults
 from torchdiffeq import odeint_adjoint as odeint
 import os
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from datasets_prep import get_dataset
+import torchvision
+from datasets_prep import get_inpainting_dataset
+from models.util import get_flow_model
 from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
-import time
-
-
-
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
-
+from omegaconf import OmegaConf
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
-            
+
+
+def get_weight(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024**2
+    return size_all_mb
+    
+class WrapperCondFlow(nn.Module):
+    def __init__(self, model, cond) -> None:
+        super().__init__()
+        self.model = model
+        self.cond = cond
+    
+    def forward(self, t, x):
+        x = torch.cat([x, self.cond], 1)
+        return self.model(t, x)
+
+
 def broadcast_params(params):
     for param in params:
         dist.broadcast(param.data, src=0)
 
-def sample_from_model(model, x_0):
+def sample_from_model(model, z_0):
+    # how to pass the cond
     t = torch.tensor([1., 0.], device="cuda")
-    fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5)
+    fake_image = odeint(model, z_0, t, atol=1e-8, rtol=1e-8)
     return fake_image
-
-def args_to_dict(args, keys):
-    return {k: getattr(args, k) for k in keys}
 
 #%%
 def train(rank, gpu, args):
     
     from EMA import EMA
+    from diffusers.models import AutoencoderKL
     
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed(args.seed + rank)
@@ -84,8 +72,7 @@ def train(rank, gpu, args):
     
     batch_size = args.batch_size
     
-    
-    dataset = get_dataset(args)
+    dataset = get_inpainting_dataset(args)
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                     num_replicas=args.world_size,
                                                                     rank=rank)
@@ -97,14 +84,20 @@ def train(rank, gpu, args):
                                                sampler=train_sampler,
                                                drop_last = True)
     
-    print(args_to_dict(args, classifier_defaults().keys()))
+    model = get_flow_model(args).to(device)
+    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
     
-    model = create_classifier(
-        **args_to_dict(args, classifier_defaults().keys())
-    ).to(device)
-    
+    first_stage_model = first_stage_model.eval()
+    first_stage_model.train = False
+    for param in first_stage_model.parameters():
+        param.requires_grad = False
+        
+    print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
+    print('FM size: {:.3f}MB'.format(get_weight(model)))
+        
     broadcast_params(model.parameters())
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, betas = (args.beta1, args.beta2))
+    
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
     
     if args.use_ema:
         optimizer = EMA(optimizer, ema_decay=args.ema_decay)
@@ -112,15 +105,18 @@ def train(rank, gpu, args):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
     
     #ddp
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
-
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=False)
+    
+    
     exp = args.exp
-    parent_dir = "./saved_info/classifier_guidance/{}".format(args.dataset)
-
+    parent_dir = "./saved_info/latent_flow_inpaint/{}".format(args.dataset)
+        
     exp_path = os.path.join(parent_dir, exp)
     if rank == 0:
         if not os.path.exists(exp_path):
             os.makedirs(exp_path)
+            config_dict = vars(args)
+            OmegaConf.save(config_dict, os.path.join(exp_path, "config.yaml"))
     
     if args.resume:
         checkpoint_file = os.path.join(exp_path, 'content.pth')
@@ -131,59 +127,71 @@ def train(rank, gpu, args):
         # load G
         optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
-        
+        global_step = checkpoint["global_step"]
         print("=> loaded checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
+        del checkpoint
     else:
-        epoch, init_epoch = 0, 0
+        global_step, epoch, init_epoch = 0, 0, 0
     
     
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
-        batch_time = AverageMeter()
-        data_time = AverageMeter()
-        losses = AverageMeter()
-        top1 = AverageMeter()
-        top5 = AverageMeter()
-        end = time.time()
-        for iteration, (x, y) in enumerate(data_loader):
-            data_time.update(time.time() - end)
-            x_1 = x.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True)
+       
+        for iteration, (image, mask, masked_image) in enumerate(data_loader):
+            x_1 = image.to(device, non_blocking=True)
+            masked_image = masked_image.to(device, non_blocking=True)
             model.zero_grad()
-            #sample t
-            t = torch.rand((x_1.size(0),) , device=device)
+            with torch.no_grad():
+                z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
+                c = first_stage_model.encode(masked_image).latent_dist.sample().mul_(args.scale_factor)
+                cc = F.interpolate(mask, size=c.shape[-2:]).to(device, non_blocking=True)
+                c = torch.cat((c, cc), dim=1)
+            #sample t            
+            t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
-            x_0 = torch.randn_like(x_1)
-            x_t = (1 - t) * x_1 + (1e-5 + (1 - 1e-5) * t) * x_0
-            
-            # compute loss
-            logits = model(x_t, t.squeeze())
-            loss = F.cross_entropy(logits, y)
-            losses.update(loss.item(), batch_size)
-            acc1, acc5 = accuracy(logits, y, topk=(1, 5))
-            top1.update(acc1[0], batch_size)
-            top5.update(acc5[0], batch_size)
-
-            # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
-
-            
+            z_0 = torch.randn_like(z_1)
+            v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
+            u = (1 - 1e-5) * z_0 - z_1
+            v_t_masked = torch.cat((v_t, c), dim=1)
+            loss = F.mse_loss(model(t.squeeze(), v_t_masked), u)
             loss.backward()
             optimizer.step()
-            
-                    
-        
+            global_step += 1
+            if iteration % 100 == 0:
+                if rank == 0:
+                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
+
         if not args.no_lr_decay:
             scheduler.step()
         
         if rank == 0:
-            print('epoch {}, Loss: {}, Top1: {}, Top5: {}, Data Time: {}'.format(epoch, loss.item(), top1.avg, top5.avg, data_time.avg))
+            with torch.no_grad():
+                rand = torch.randn_like(z_1)[:4]
+                b, h, w = 4, x_1.shape[2], x_1.shape[3]
+                mask = torch.zeros(b, h, w).to(x_1.device)
+                # # zeros will be filled in
+                mask[:, h // 4:3 * h // 4, w // 4:3 * w // 4] = 1.
+                mask = mask[:, None, ...]
+                
+                x_1 = x_1[:4]
+                x_1 = (x_1 + 1.0)/2.0
+                masked_image = (1-mask)*x_1
+                masked_image = masked_image * 2.0 - 1.0
+                mask = mask * 2 - 1
+                c = first_stage_model.encode(masked_image).latent_dist.sample().mul_(args.scale_factor)
+                cc = F.interpolate(mask, size=c.shape[-2:])
+                c = torch.cat((c, cc), dim=1)
+                model_cond = WrapperCondFlow(model, c)
+                fake_sample = sample_from_model(model_cond, rand)[-1]
+                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+            torchvision.utils.save_image(masked_image, os.path.join(exp_path, 'image_epoch_masked_{}.png'.format(epoch)), normalize=True)
+            torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True)
+            del fake_image, fake_sample, masked_image, model_cond, cc, c, mask
             if args.save_content:
                 if epoch % args.save_content_every == 0:
                     print('Saving content.')
-                    content = {'epoch': epoch + 1, 'args': args,
+                    content = {'epoch': epoch + 1, 'global_step': global_step, 'args': args,
                                'model_dict': model.state_dict(), 'optimizer': optimizer.state_dict(),
                                'scheduler': scheduler.state_dict()}
                     
@@ -202,7 +210,7 @@ def train(rank, gpu, args):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6021'
+    os.environ['MASTER_PORT'] = args.master_port
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
@@ -222,24 +230,45 @@ if __name__ == '__main__':
     
     parser.add_argument('--image_size', type=int, default=32,
                             help='size of image')
+    parser.add_argument('--scale_factor', type=float, default=0.18215,
+                            help='size of image')
     parser.add_argument('--num_in_channels', type=int, default=3,
                             help='in channel image')
+    parser.add_argument('--num_out_channels', type=int, default=3,
+                            help='in channel image')
+    parser.add_argument('--nf', type=int, default=256,
+                            help='channel of image')
+    parser.add_argument('--centered', action='store_false', default=True,
+                            help='-1,1 scale')
+    parser.add_argument("--resamp_with_conv", type=bool, default=True)
+    parser.add_argument('--num_res_blocks', type=int, default=2,
+                            help='number of resnet blocks per scale')
+    parser.add_argument('--num_heads', type=int, default=4,
+                            help='number of head')
+    parser.add_argument('--num_head_upsample', type=int, default=-1,
+                            help='number of head upsample')
+    parser.add_argument('--num_head_channels', type=int, default=-1,
+                            help='number of head channels')
+    parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,),
+                            help='resolution of applying attention')
+    parser.add_argument('--ch_mult', nargs='+', type=int, default=(1,1,2,2,4,4),
+                            help='channel mult')
+    parser.add_argument('--dropout', type=float, default=0.,
+                            help='drop-out rate')
+    parser.add_argument('--num_classes', type=int, default=None,
+                            help='num classes')
+    parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
+    parser.add_argument("--resblock_updown", type=bool, default=False)
+    parser.add_argument("--use_new_attention_order", type=bool, default=False)
     
-    parser.add_argument('--exp', default='test', help='name of experiment')
+    
+    #geenrator and training
+    parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
+    parser.add_argument('--num_timesteps', type=int, default=200)
 
     parser.add_argument('--batch_size', type=int, default=128, help='input batch size')
-    
-    parser.add_argument('--classifier_depth', type=int, default=2, help='num of resblock')
-    parser.add_argument('--classifier_width', type=int, default=128, help='num of resblock')
-    parser.add_argument('--classifier_pool', type=str, default="attention", help='num of resblock')
-    parser.add_argument('--classifier_resblock_updown', type=bool, default=True, help='num of resblock')
-    parser.add_argument('--classifier_use_scale_shift_norm', type=bool, default=True, help='num of resblock')
-    parser.add_argument('--classifier_use_fp16', type=bool, default=False, help='num of resblock')
-    parser.add_argument('--classifier_attention_resolutions', type=str, default="8,4", help='num of resblock')
-    
-        
-    parser.add_argument('--num_epoch', type=int, default=500)
+    parser.add_argument('--num_epoch', type=int, default=1200)
 
     parser.add_argument('--lr', type=float, default=5e-4, help='learning rate g')
     
@@ -269,8 +298,12 @@ if __name__ == '__main__':
                         help='rank of process in the node')
     parser.add_argument('--master_address', type=str, default='127.0.0.1',
                         help='address for master')
+    parser.add_argument('--master_port', type=str, default='6255',
+                        help='address for master')
 
-   
+
+    # torch.multiprocessing.set_start_method('spawn', force=True)# good solution !!!!
+
     args = parser.parse_args()
     args.world_size = args.num_proc_node * args.num_process_per_node
     size = args.num_process_per_node

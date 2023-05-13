@@ -1,15 +1,29 @@
 from models.guided_diffusion.unet import EncoderUNetModel
 
+def classifier_defaults():
+    """
+    Defaults for classifier models.
+    """
+    return dict(
+        image_size=64,
+        classifier_use_fp16=False,
+        classifier_width=128,
+        classifier_depth=2,
+        classifier_attention_resolutions="32,16,8",  # 16
+        classifier_use_scale_shift_norm=True,  # False
+        classifier_resblock_updown=True,  # False
+        classifier_pool="attention",
+    )
 
 def create_classifier(
     image_size,
     classifier_width,
     classifier_depth,
     classifier_attention_resolutions,
-    classifier_use_fp16 = False,
-    classifier_use_scale_shift_norm = False,
-    classifier_resblock_updown = False,
-    classifier_pool = False,
+    classifier_use_fp16,
+    classifier_use_scale_shift_norm,
+    classifier_resblock_updown,
+    classifier_pool,
 ):
     if image_size == 512:
         channel_mult = (0.5, 1, 1, 2, 2, 4, 4)

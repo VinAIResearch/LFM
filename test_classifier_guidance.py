@@ -9,24 +9,30 @@ from models.util import get_flow_model
 import torchvision
 from pytorch_fid.fid_score import calculate_fid_given_paths
 import resnet
+from encoder_classifier import create_classifier, classifier_defaults
 
+
+def args_to_dict(args, keys):
+    return {k: getattr(args, k) for k in keys}
 
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
 FIXER_SOLVER = ["euler", "rk4", "midpoint"]
 
-def get_cond(classifier, x, y, t, scale):
+def get_cond(classifier, x, y, s, scale):
     assert y is not None
     with torch.enable_grad():
         x_in = x.detach().requires_grad_(True)
-        logits = classifier(x_in, t)
-        log_probs = torch.log(logits)
+        s_ = torch.tensor(s).expand(x.size(0),).to("cuda")
+        logits = classifier(x_in, s_)
+        log_probs = torch.log_softmax(logits, dim=-1)
         selected = log_probs[range(len(logits)), y.view(-1)]
-        return 2 * torch.autograd.grad(selected.sum(), x_in)[0] * scale * t/(1-t)
+        return 2 * torch.autograd.grad(selected.sum(), x_in)[0] * scale * s/(1 + 1e-4 - s)
 
 def get_sampler(flow_model, n_steps, device = "cuda"):
     t_final = 0.
     t_start = 1.
     t = torch.linspace(t_start, t_final, n_steps + 1, device=device)
+    
     def sampler(x):
         list_vec = []
         xs = []
@@ -49,10 +55,10 @@ def get_sampler(flow_model, n_steps, device = "cuda"):
         y = y.long()
         nfes = 0
         for n in range(n_steps):
-            t = n/n_steps
+            s = n/n_steps
             with torch.no_grad():
                 vec = flow_model(ones * t[n], x)
-            cond_vec = get_cond(classifier, x, y, t, scale)
+            cond_vec = get_cond(classifier, x, y, s, scale)
             # print("cond {}".format(n), torch.max(cond_eps), torch.min(cond_eps))
             # print("vec {}".format(n), torch.max(vec), torch.min(vec))
             vec = vec + cond_vec
@@ -108,8 +114,10 @@ def sample_and_test(args):
     
     to_range_0_1 = lambda x: (x + 1.) / 2.
 
-    classifier = resnet.resnet50().to(device)
-    classifier_ckpt = torch.load('./saved_info/classifier_guidance/{}/test/model_275.pth'.format(args.dataset), map_location=device)
+    classifier = create_classifier(
+        **args_to_dict(args, classifier_defaults().keys())
+    ).to(device)
+    classifier_ckpt = torch.load('./saved_info/classifier_guidance/{}/test/model_500.pth'.format(args.dataset), map_location=device)
     print("Finish loading classifier")
     #loading weights from ddp in single gpu
     for key in list(classifier_ckpt.keys()):
@@ -149,8 +157,8 @@ def sample_and_test(args):
         print('FID = {}'.format(fid))
     else:
         x_0 = torch.randn(args.batch_size, 3, args.image_size, args.image_size).to(device)
-        _, sampler_cond = get_sampler(model, n_steps=1//args.step_size, device=device)
-        fake_sample, nfe, list_vec, xs = sampler_cond(x_0, 1, classifier, args.scale)
+        _, sampler_cond = get_sampler(model, n_steps=int(1/args.step_size), device=device)
+        fake_sample, nfe, list_vec, xs = sampler_cond(x_0, 2, classifier, args.scale)
         print("NFE: {}".format(nfe))
         torchvision.utils.save_image(to_range_0_1(fake_sample), './samples_{}_{}.jpg'.format(args.dataset, args.scale))
         # os.makedirs("list_vec", exist_ok=True)
@@ -212,6 +220,14 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
     parser.add_argument('--num_timesteps', type=int, default=200)
     parser.add_argument('--batch_size', type=int, default=16, help='sample generating batch size')
+    
+    parser.add_argument('--classifier_depth', type=int, default=3, help='num of resblock')
+    parser.add_argument('--classifier_width', type=int, default=192, help='num of resblock')
+    parser.add_argument('--classifier_pool', type=str, default="attention", help='num of resblock')
+    parser.add_argument('--classifier_resblock_updown', type=bool, default=True, help='num of resblock')
+    parser.add_argument('--classifier_use_scale_shift_norm', type=bool, default=True, help='num of resblock')
+    parser.add_argument('--classifier_use_fp16', type=bool, default=False, help='num of resblock')
+    parser.add_argument('--classifier_attention_resolutions', type=str, default="8,4", help='num of resblock')
     
     # sampling argument
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')

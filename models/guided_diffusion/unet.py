@@ -757,8 +757,7 @@ class EncoderUNetModel(nn.Module):
 
         ch = int(channel_mult[0] * model_channels)
         self.input_blocks = nn.ModuleList(
-            [TimestepEmbedSequential(
-                conv_nd(dims, in_channels, ch, 3, padding=1))]
+            [TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))]
         )
         self._feature_size = ch
         input_block_chans = [ch]
@@ -897,9 +896,7 @@ class EncoderUNetModel(nn.Module):
         :param timesteps: a 1-D batch of timesteps.
         :return: an [N x K] Tensor of outputs.
         """
-        emb = self.time_embed(timestep_embedding(
-            timesteps, self.model_channels))
-
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         results = []
         h = x.type(self.dtype)
         for module in self.input_blocks:
