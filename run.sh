@@ -75,7 +75,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --dataset latent_imagenet_256 --datadir ./data/latent_imagenet_256/ --num_classes 1000 \
 #     --batch_size 128 --num_epoch 800 --label_dim 1000 \
 #     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 3 \
 #     --lr 1e-4 --scale_factor 0.18215 \
 #     --save_content --save_content_every 10 \
 #     --master_port $MASTER_PORT --num_process_per_node 8 \

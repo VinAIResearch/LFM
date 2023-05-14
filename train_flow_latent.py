@@ -55,11 +55,11 @@ def sample_from_model(model, x_0):
     t = torch.tensor([1., 0.], device="cuda")
     fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5, adjoint_params=model.func.parameters())
     # fake_image = odeint(
-    #     model, 
-    #     x_0, 
+    #     model,
+    #     x_0,
     #     t,
-    #     method="euler", 
-    #     atol=1e-5, 
+    #     method="euler",
+    #     atol=1e-5,
     #     rtol=1e-5,
     #     adjoint_method="euler",
     #     adjoint_atol=1e-5,
@@ -67,7 +67,7 @@ def sample_from_model(model, x_0):
     #     adjoint_params=model.func.parameters(),
     #     options={"step_size": 50}
     #     )
-    
+
     return fake_image
 
 
@@ -78,9 +78,9 @@ def train(rank, gpu, args):
     torch.cuda.manual_seed(args.seed + rank)
     torch.cuda.manual_seed_all(args.seed + rank)
     device = torch.device('cuda:{}'.format(gpu))
-    
+
     batch_size = args.batch_size
-    
+
     dataset = get_dataset(args)
     print(dataset)
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
@@ -93,33 +93,33 @@ def train(rank, gpu, args):
                                                pin_memory=True,
                                                sampler=train_sampler,
                                                drop_last = True)
-    
+
     model = create_network(args).to(device)
     first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device)
-    
+
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
     for param in first_stage_model.parameters():
         param.requires_grad = False
-        
+
     print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
     print('FM size: {:.3f}MB'.format(get_weight(model)))
-        
+
     broadcast_params(model.parameters())
-    
+
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
-    
+
     if args.use_ema:
         optimizer = EMA(optimizer, ema_decay=args.ema_decay)
-    
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
-    
+
     #ddp
     model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu], find_unused_parameters=False)
-    
+
     exp = args.exp
     parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
-        
+
     exp_path = os.path.join(parent_dir, exp)
     if rank == 0:
         if not os.path.exists(exp_path):
@@ -127,7 +127,7 @@ def train(rank, gpu, args):
             config_dict = vars(args)
             OmegaConf.save(config_dict, os.path.join(exp_path, "config.yaml"))
     print("Exp path:", exp_path)
-    
+
     if args.resume or os.path.exists(os.path.join(exp_path, 'content.pth')):
         checkpoint_file = os.path.join(exp_path, 'content.pth')
         checkpoint = torch.load(checkpoint_file, map_location=device)
@@ -138,9 +138,10 @@ def train(rank, gpu, args):
         optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
         global_step = checkpoint["global_step"]
-        
+
         print("=> resume checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
+        del checkpoint
 
     elif args.model_ckpt and os.path.exists(os.path.join(exp_path, args.model_ckpt)):
         checkpoint_file = os.path.join(exp_path, args.model_ckpt)
@@ -152,14 +153,15 @@ def train(rank, gpu, args):
 
         print("=> loaded checkpoint (epoch {})"
                   .format(epoch))
+        del checkpoint
     else:
         global_step, epoch, init_epoch = 0, 0, 0
-    
+
     use_label = True if "imagenet" in args.dataset else False
     is_latent_data = True if "latent" in args.dataset else False
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
-       
+
         for iteration, (x, y) in enumerate(data_loader):
             x_0 = x.to(device, non_blocking=True)
             y = None if not use_label else y.to(device, non_blocking=True)
@@ -178,7 +180,7 @@ def train(rank, gpu, args):
             # alternative notation (similar to flow matching): 1 is data, 0 is real noise
             # v_t = (1 - (1 - 1e-5) * t) * z_0 + t * z_1
             # u = z_1 - (1 - 1e-5) * z_0
-            
+
             v = model(t.squeeze(), v_t, y)
             loss = F.mse_loss(v, u)
             loss.backward()
@@ -187,12 +189,12 @@ def train(rank, gpu, args):
             if iteration % 100 == 0:
                 if rank == 0:
                     print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
-            
+
         if not args.no_lr_decay:
             scheduler.step()
-        
+
         if rank == 0:
-            if epoch % args.plot_every == 0: 
+            if epoch % args.plot_every == 0:
 
                 with torch.no_grad():
                     rand = torch.randn_like(z_0)[:4]
@@ -212,17 +214,17 @@ def train(rank, gpu, args):
                     content = {'epoch': epoch + 1, 'global_step': global_step, 'args': args,
                                'model_dict': model.state_dict(), 'optimizer': optimizer.state_dict(),
                                'scheduler': scheduler.state_dict()}
-                    
+
                     torch.save(content, os.path.join(exp_path, 'content.pth'))
-                
+
             if epoch % args.save_ckpt_every == 0:
                 if args.use_ema:
                     optimizer.swap_parameters_with_ema(store_params_in_ema=True)
-                    
+
                 torch.save(model.state_dict(), os.path.join(exp_path, 'model_{}.pth'.format(epoch)))
                 if args.use_ema:
                     optimizer.swap_parameters_with_ema(store_params_in_ema=True)
-            
+
 
 
 def init_processes(rank, size, fn, args):
@@ -234,11 +236,11 @@ def init_processes(rank, size, fn, args):
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
     fn(rank, gpu, args)
     dist.barrier()
-    cleanup()  
+    cleanup()
 
 
 def cleanup():
-    dist.destroy_process_group()    
+    dist.destroy_process_group()
 
 
 #%%
@@ -246,7 +248,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('ddgan parameters')
     parser.add_argument('--seed', type=int, default=1024,
                         help='seed used for initialization')
-    
+
     parser.add_argument('--resume', action='store_true',default=False)
     parser.add_argument('--model_ckpt', type=str, default=None,
                             help="Model ckpt to init from")
@@ -296,7 +298,7 @@ if __name__ == '__main__':
     #                         help='number of head channels')
 
     parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
-    
+
     # training
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
@@ -307,23 +309,23 @@ if __name__ == '__main__':
     parser.add_argument('--num_epoch', type=int, default=1200)
 
     parser.add_argument('--lr', type=float, default=5e-4, help='learning rate g')
-    
+
     parser.add_argument('--beta1', type=float, default=0.5,
                             help='beta1 for adam')
     parser.add_argument('--beta2', type=float, default=0.9,
                             help='beta2 for adam')
     parser.add_argument('--no_lr_decay',action='store_true', default=False)
-    
+
     parser.add_argument('--use_ema', action='store_true', default=False,
                             help='use EMA or not')
     parser.add_argument('--ema_decay', type=float, default=0.9999, help='decay rate for EMA')
-    
+
 
     parser.add_argument('--save_content', action='store_true', default=False)
     parser.add_argument('--save_content_every', type=int, default=10, help='save content for resuming every x epochs')
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
     parser.add_argument('--plot_every', type=int, default=5, help='plot every x epochs')
-   
+
     ###ddp
     parser.add_argument('--num_proc_node', type=int, default=1,
                         help='The number of nodes in multi node env.')
@@ -353,10 +355,10 @@ if __name__ == '__main__':
             p = Process(target=init_processes, args=(global_rank, global_size, train, args))
             p.start()
             processes.append(p)
-            
+
         for p in processes:
             p.join()
     else:
         print('starting in debug mode')
-        
+
         init_processes(0, size, train, args)
