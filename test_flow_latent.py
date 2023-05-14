@@ -41,7 +41,7 @@ class NFECount(nn.Module):
         return self.model(t, x, *args, **kwargs)
 
 
-def sample_from_model(model, x_0, args):
+def sample_from_model(model, x_0, model_kwargs, args):
     if args.method in ADAPTIVE_SOLVER:
         options = {
             "dtype": torch.float64,
@@ -56,7 +56,14 @@ def sample_from_model(model, x_0, args):
         model = NFECount(model).to(x_0.device) # count wrapper
 
     t = torch.tensor([1., 0.], device="cuda")
-    fake_image = odeint(model, 
+
+    def denoiser(t, x_0):
+        if args.cfg_scale > 1.:
+            return model.forward_with_cfg(t, x_0, **model_kwargs)
+        else:
+            return model(t, x_0, **model_kwargs)
+
+    fake_image = odeint(denoiser, 
                         x_0, 
                         t, 
                         method=args.method, 
@@ -66,7 +73,7 @@ def sample_from_model(model, x_0, args):
                         adjoint_atol= args.atol,
                         adjoint_rtol= args.rtol,
                         options=options,
-                        adjoint_params=model.func.parameters(),
+                        adjoint_params=model.parameters(),
                         )
     if args.compute_nfe:
         return fake_image, model.nfe
@@ -92,6 +99,8 @@ def sample_from_model2(model, x, model_kwargs, generator, args):
             generator=generator,
         )
     return sample
+
+
 
 
 def sample_and_test(rank, gpu, args):
@@ -127,7 +136,7 @@ def sample_and_test(rank, gpu, args):
     #loading weights from ddp in single gpu
     for key in list(ckpt.keys()):
         ckpt[key[7:]] = ckpt.pop(key)
-    model.load_state_dict(ckpt)
+    model.load_state_dict(ckpt, strict=True)
     model.eval()
 
     del ckpt
@@ -135,8 +144,8 @@ def sample_and_test(rank, gpu, args):
     iters_needed = args.n_sample // args.batch_size
     save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
-    # if args.method in FIXER_SOLVER:
-    #     save_dir += "_s{}".format(args.num_steps)
+    if args.method in FIXER_SOLVER:
+        save_dir += "_s{}".format(args.num_steps)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -145,6 +154,32 @@ def sample_and_test(rank, gpu, args):
     #### seed should be aligned with rank 
     #### as the same seed can cause identical generation on other gpus
     generator = get_generator(args.generator, args.batch_size, args.seed + rank) 
+
+    def run_sampling(num_samples, generator):
+        x = generator.randn(num_samples, 4, args.image_size//8, args.image_size//8).to(device)
+        if args.num_classes in [None, 1]:
+            model_kwargs = {}
+        else:
+            y = generator.randint(0, args.num_classes, (num_samples,), device=device)
+            # Setup classifier-free guidance:
+            if args.cfg_scale > 1.:
+                x = torch.cat([x, x], 0)
+                y_null = torch.tensor([args.num_classes] * num_samples, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
+                y = torch.cat([y, y_null], 0)
+                model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+            else:
+                model_kwargs = dict(y=y)
+        
+        if not args.use_karras_samplers:
+            fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
+        else:
+            fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
+
+        if args.cfg_scale > 1.:
+            fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
+
+        fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+        return fake_image
 
     if args.compute_nfe:
         print("Compute nfe")
@@ -175,27 +210,29 @@ def sample_and_test(rank, gpu, args):
         with torch.no_grad():
             for rep in tqdm(range(repetitions)):
                 starter.record()
-                x = generator.randn(1, 4, args.image_size//8, args.image_size//8).to(device)
-                if not args.use_karras_samplers:
-                    y = None if args.num_classes in [None, 1] else generator.randint(args.num_classes, (1,), device=device) 
-                    sample_model = partial(model, y=y)
-                    fake_sample = sample_from_model(sample_model, x, args)[-1]
-                else:
-                    if args.num_classes in [None, 1]:
-                        model_kwargs = {}
-                    else:
-                        y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
-                        # Setup classifier-free guidance:
-                        if args.cfg_scale > 1.:
-                            x = torch.cat([x, x], 0)
-                            y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
-                            y = torch.cat([y, y_null], 0)
-                        model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+                # x = generator.randn(1, 4, args.image_size//8, args.image_size//8).to(device)
+                # if args.num_classes in [None, 1]:
+                #     model_kwargs = {}
+                # else:
+                #     y = generator.randint(0, args.num_classes, (1,), device=device)
+                #     # Setup classifier-free guidance:
+                #     if args.cfg_scale > 1.:
+                #         x = torch.cat([x, x], 0)
+                #         y_null = torch.tensor([args.num_classes] * 1, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
+                #         y = torch.cat([y, y_null], 0)
+                #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+                #     else:
+                #         model_kwargs = dict(y=y)
+                # 
+                # if not args.use_karras_samplers:
+                #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
+                # else:
+                #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
 
-                    fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
-                    if args.cfg_scale > 1.:
-                        fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
-                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                # if args.cfg_scale > 1.:
+                #     fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
+                # fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                _ = run_sampling(1, generator)
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
@@ -223,28 +260,30 @@ def sample_and_test(rank, gpu, args):
 
         for i in pbar:
             with torch.no_grad():
-                x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-                if not args.use_karras_samplers:
-                    y = None if args.num_classes in [None, 1] else generator.randint(args.num_classes, (args.batch_size,), device=device) 
-                    sample_model = partial(model, y=y)
-                    fake_sample = sample_from_model(sample_model, x, args)[-1]
-                else:
-                    if args.num_classes in [None, 1]:
-                        model_kwargs = {}
-                    else:
-                        y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
-                        # Setup classifier-free guidance:
-                        if args.cfg_scale > 1.:
-                            x = torch.cat([x, x], 0)
-                            y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
-                            y = torch.cat([y, y_null], 0)
-                        model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+                # x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+                # if args.num_classes in [None, 1]:
+                #     model_kwargs = {}
+                # else:
+                #     y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
+                #     # Setup classifier-free guidance:
+                #     if args.cfg_scale > 1.:
+                #         x = torch.cat([x, x], 0)
+                #         y_null = torch.tensor([args.num_classes] * args.batch_size, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
+                #         y = torch.cat([y, y_null], 0)
+                #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+                #     else:
+                #         model_kwargs = dict(y=y)
+                # 
+                # if not args.use_karras_samplers:
+                #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
+                # else:
+                #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
 
-                    fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
-                    if args.cfg_scale > 1.:
-                        fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
+                # if args.cfg_scale > 1.:
+                #     fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
 
-                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                # fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                fake_image = run_sampling(args.batch_size, generator)
                 fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
                 for j, x in enumerate(fake_image):
                     index = j * args.world_size + rank + total
@@ -265,27 +304,29 @@ def sample_and_test(rank, gpu, args):
     else:
         print("Inference")
         with torch.no_grad():
-            x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-            if not args.use_karras_samplers:
-                y = None if args.num_classes in [None, 1] else torch.randint(args.num_classes, (args.batch_size,), device=device) 
-                sample_model = partial(model, y=y)
-                fake_sample = sample_from_model(sample_model, x, args)[-1]
-            else:
-                if args.num_classes in [None, 1]:
-                    model_kwargs = {}
-                else:
-                    y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
-                    # Setup classifier-free guidance:
-                    if args.cfg_scale > 1.:
-                        x = torch.cat([x, x], 0)
-                        y_null = torch.tensor([args.num_classes] * args.batch_size, device=device)
-                        y = torch.cat([y, y_null], 0)
-                    model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+            # x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
+            # if args.num_classes in [None, 1]:
+            #     model_kwargs = {}
+            # else:
+            #     y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
+            #     # Setup classifier-free guidance:
+            #     if args.cfg_scale > 1.:
+            #         x = torch.cat([x, x], 0)
+            #         y_null = torch.tensor([args.num_classes] * args.batch_size, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
+            #         y = torch.cat([y, y_null], 0)
+            #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+            #     else:
+            #         model_kwargs = dict(y=y)
+            # 
+            # if not args.use_karras_samplers:
+            #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
+            # else:
+            #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
 
-                fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
-                if args.cfg_scale > 1.:
-                    fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
-            fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+            # if args.cfg_scale > 1.:
+            #     fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
+            # fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
+            fake_image = run_sampling(args.batch_size, generator)
         fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
         if not args.use_karras_samplers:
             save_path = './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol)
