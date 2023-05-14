@@ -10,15 +10,17 @@ import torch
 import numpy as np
 from torchdiffeq import odeint_adjoint as odeint
 import os
+from einops import rearrange
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
-from datasets_prep import get_inpainting_dataset
+from datasets_prep.annotated_object_coco import COCOTrain, COCOValidation
 from models.util import get_flow_model
 from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
+from models.encoder import BERTEmbedder
 from omegaconf import OmegaConf
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -26,6 +28,23 @@ torch.backends.cudnn.allow_tf32 = True
 def copy_source(file, output_dir):
     shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
 
+
+def to_rgb(x):
+    x = x.float()
+    colorize = torch.randn(3, x.shape[1], 1, 1).to(x)
+    x = nn.functional.conv2d(x, weight=colorize)
+    x = 2. * (x - x.min()) / (x.max() - x.min()) - 1.
+    return x
+
+def plot_coord(train_dataset, batch, args, epoch):
+    bbox_imgs = []
+    map_fn = lambda catno: train_dataset.get_textual_label_for_category_id(train_dataset.get_category_id(catno))
+    for tknzd_bbox in batch:
+        bboximg = train_dataset.conditional_builders["objects_bbox"].plot(tknzd_bbox.detach().cpu(), map_fn, (256, 256))
+        bbox_imgs.append(bboximg)
+
+    cond_img = torch.stack(bbox_imgs, dim=0)
+    torchvision.utils.save_image(cond_img, os.path.join(args.exp_path, 'image_epoch_{}_coord.png'.format(epoch)), normalize=True)
 
 def get_weight(model):
     param_size = 0
@@ -39,14 +58,13 @@ def get_weight(model):
     return size_all_mb
     
 class WrapperCondFlow(nn.Module):
-    def __init__(self, model, cond) -> None:
+    def __init__(self, model, cond):
         super().__init__()
         self.model = model
         self.cond = cond
     
     def forward(self, t, x):
-        x = torch.cat([x, self.cond], 1)
-        return self.model(t, x)
+        return self.model(t, x, context=self.cond)
 
 
 def broadcast_params(params):
@@ -69,10 +87,11 @@ def train(rank, gpu, args):
     torch.cuda.manual_seed(args.seed + rank)
     torch.cuda.manual_seed_all(args.seed + rank)
     device = torch.device('cuda:{}'.format(gpu))
-    
+    args.layout = True
     batch_size = args.batch_size
     
-    dataset = get_inpainting_dataset(args)
+    dataset = COCOTrain(size=256)
+    
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                     num_replicas=args.world_size,
                                                                     rank=rank)
@@ -86,18 +105,25 @@ def train(rank, gpu, args):
     
     model = get_flow_model(args).to(device)
     first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
-    
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
     for param in first_stage_model.parameters():
         param.requires_grad = False
         
+    cond_stage_model = BERTEmbedder(n_embed=512,
+                                    n_layer=16,
+                                    vocab_size=8192,
+                                    max_seq_len=92,
+                                    use_tokenizer=False).to(device)
+        
     print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
+    print('Bert Tokenizer size: {:.3f}MB'.format(get_weight(cond_stage_model)))
     print('FM size: {:.3f}MB'.format(get_weight(model)))
         
     broadcast_params(model.parameters())
+    broadcast_params(cond_stage_model.parameters())
     
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
+    optimizer = optim.AdamW(list(model.parameters())+list(cond_stage_model.parameters()), lr=args.lr, weight_decay=0.0)
     
     if args.use_ema:
         optimizer = EMA(optimizer, ema_decay=args.ema_decay)
@@ -106,12 +132,13 @@ def train(rank, gpu, args):
     
     #ddp
     model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu],find_unused_parameters=False)
-    
+    cond_stage_model = nn.parallel.DistributedDataParallel(cond_stage_model, device_ids=[gpu],find_unused_parameters=False)
     
     exp = args.exp
-    parent_dir = "./saved_info/latent_flow_inpaint/{}".format(args.dataset)
+    parent_dir = "./saved_info/latent_flow_layout2image/{}".format(args.dataset)
         
     exp_path = os.path.join(parent_dir, exp)
+    args.exp_path = exp_path
     if rank == 0:
         if not os.path.exists(exp_path):
             os.makedirs(exp_path)
@@ -124,6 +151,7 @@ def train(rank, gpu, args):
         init_epoch = checkpoint['epoch']
         epoch = init_epoch
         model.load_state_dict(checkpoint['model_dict'])
+        cond_stage_model.load_state_dict(checkpoint['cond_stage_model_dict'])
         # load G
         optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
@@ -138,29 +166,28 @@ def train(rank, gpu, args):
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
        
-        for iteration, (image, mask, masked_image) in enumerate(data_loader):
+        for iteration, batch in enumerate(data_loader):
+            image = batch["image"].permute(0, 3, 1, 2)
+            coords = batch["objects_bbox"].to(device, non_blocking=True)
             x_1 = image.to(device, non_blocking=True)
-            masked_image = masked_image.to(device, non_blocking=True)
             model.zero_grad()
             with torch.no_grad():
                 z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
-                c = first_stage_model.encode(masked_image).latent_dist.sample().mul_(args.scale_factor)
-                cc = F.interpolate(mask, size=c.shape[-2:]).to(device, non_blocking=True)
-                c = torch.cat((c, cc), dim=1)
+                c = cond_stage_model(coords)
             #sample t            
             t = torch.rand((z_1.size(0),) , device=device)
             t = t.view(-1, 1, 1, 1)
             z_0 = torch.randn_like(z_1)
             v_t = (1 - t) * z_1 + (1e-5 + (1 - 1e-5) * t) * z_0
             u = (1 - 1e-5) * z_0 - z_1
-            v_t_masked = torch.cat((v_t, c), dim=1)
-            loss = F.mse_loss(model(t.squeeze(), v_t_masked), u)
+                                    
+            loss = F.mse_loss(model(t.squeeze(), v_t, context=c), u)
             loss.backward()
             optimizer.step()
             global_step += 1
             if iteration % 100 == 0:
                 if rank == 0:
-                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
+                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))            
 
         if not args.no_lr_decay:
             scheduler.step()
@@ -168,32 +195,21 @@ def train(rank, gpu, args):
         if rank == 0:
             with torch.no_grad():
                 rand = torch.randn_like(z_1)[:4]
-                b, h, w = 4, x_1.shape[2], x_1.shape[3]
-                mask = torch.zeros(b, h, w).to(x_1.device)
-                # # zeros will be filled in
-                mask[:, h // 4:3 * h // 4, w // 4:3 * w // 4] = 1.
-                mask = mask[:, None, ...]
-                
-                x_1 = x_1[:4]
-                x_1 = (x_1 + 1.0)/2.0
-                masked_image = (1-mask)*x_1
-                masked_image = masked_image * 2.0 - 1.0
-                mask = mask * 2 - 1
-                c = first_stage_model.encode(masked_image).latent_dist.sample().mul_(args.scale_factor)
-                cc = F.interpolate(mask, size=c.shape[-2:])
-                c = torch.cat((c, cc), dim=1)
+                coords = coords[:4]
+                c = cond_stage_model(coords)
                 model_cond = WrapperCondFlow(model, c)
                 fake_sample = sample_from_model(model_cond, rand)[-1]
                 fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
-            torchvision.utils.save_image(masked_image, os.path.join(exp_path, 'image_epoch_masked_{}.png'.format(epoch)), normalize=True)
+            plot_coord(train_dataset=dataset, batch=coords, args=args, epoch=epoch)
             torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True)
-            del fake_image, fake_sample, masked_image, model_cond, cc, c, mask
+            torchvision.utils.save_image(image[:4], os.path.join(exp_path, 'image_epoch_{}_gt.png'.format(epoch)), normalize=True)
+            del fake_image, fake_sample, model_cond, c, coords
             if args.save_content:
                 if epoch % args.save_content_every == 0:
                     print('Saving content.')
                     content = {'epoch': epoch + 1, 'global_step': global_step, 'args': args,
                                'model_dict': model.state_dict(), 'optimizer': optimizer.state_dict(),
-                               'scheduler': scheduler.state_dict()}
+                               'scheduler': scheduler.state_dict(), "cond_stage_model_dict": cond_stage_model.state_dict()}
                     
                     torch.save(content, os.path.join(exp_path, 'content.pth'))
                 
@@ -202,6 +218,7 @@ def train(rank, gpu, args):
                     optimizer.swap_parameters_with_ema(store_params_in_ema=True)
                     
                 torch.save(model.state_dict(), os.path.join(exp_path, 'model_{}.pth'.format(epoch)))
+                torch.save(cond_stage_model.state_dict(), os.path.join(exp_path, 'cond_stage_model_{}.pth'.format(epoch)))
                 if args.use_ema:
                     optimizer.swap_parameters_with_ema(store_params_in_ema=True)
             
@@ -228,13 +245,13 @@ if __name__ == '__main__':
     
     parser.add_argument('--resume', action='store_true',default=False)
     
-    parser.add_argument('--image_size', type=int, default=32,
+    parser.add_argument('--image_size', type=int, default=256,
                             help='size of image')
     parser.add_argument('--scale_factor', type=float, default=0.18215,
                             help='size of image')
-    parser.add_argument('--num_in_channels', type=int, default=3,
+    parser.add_argument('--num_in_channels', type=int, default=4,
                             help='in channel image')
-    parser.add_argument('--num_out_channels', type=int, default=3,
+    parser.add_argument('--num_out_channels', type=int, default=4,
                             help='in channel image')
     parser.add_argument('--nf', type=int, default=256,
                             help='channel of image')
@@ -247,11 +264,11 @@ if __name__ == '__main__':
                             help='number of head')
     parser.add_argument('--num_head_upsample', type=int, default=-1,
                             help='number of head upsample')
-    parser.add_argument('--num_head_channels', type=int, default=-1,
+    parser.add_argument('--num_head_channels', type=int, default=32,
                             help='number of head channels')
-    parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,),
+    parser.add_argument('--attn_resolutions', nargs='+', type=int, default=(16,8,4),
                             help='resolution of applying attention')
-    parser.add_argument('--ch_mult', nargs='+', type=int, default=(1,1,2,2,4,4),
+    parser.add_argument('--ch_mult', nargs='+', type=int, default=(1,2,3,4),
                             help='channel mult')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
@@ -264,13 +281,13 @@ if __name__ == '__main__':
     
     #geenrator and training
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
-    parser.add_argument('--dataset', default='cifar10', help='name of dataset')
+    parser.add_argument('--dataset', default='coco', help='name of dataset')
     parser.add_argument('--num_timesteps', type=int, default=200)
 
-    parser.add_argument('--batch_size', type=int, default=128, help='input batch size')
-    parser.add_argument('--num_epoch', type=int, default=1200)
+    parser.add_argument('--batch_size', type=int, default=32, help='input batch size')
+    parser.add_argument('--num_epoch', type=int, default=500)
 
-    parser.add_argument('--lr', type=float, default=5e-4, help='learning rate g')
+    parser.add_argument('--lr', type=float, default=5e-5, help='learning rate g')
     
     parser.add_argument('--beta1', type=float, default=0.5,
                             help='beta1 for adam')
@@ -324,5 +341,4 @@ if __name__ == '__main__':
             p.join()
     else:
         print('starting in debug mode')
-        
         init_processes(0, size, train, args)

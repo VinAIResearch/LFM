@@ -68,20 +68,20 @@ class AnnotatedObjectsDataset(Dataset):
     def setup_transform(target_image_size: int, crop_method: CropMethodType, random_flip: bool):
         transform_functions = []
         if crop_method == 'none':
-            transform_functions.append(transforms.Resize((target_image_size, target_image_size)))
+            transform_functions.append(transforms.Resize((target_image_size, target_image_size), antialias=True))
         elif crop_method == 'center':
             transform_functions.extend([
-                transforms.Resize(target_image_size),
+                transforms.Resize(target_image_size, antialias=True),
                 CenterCropReturnCoordinates(target_image_size)
             ])
         elif crop_method == 'random-1d':
             transform_functions.extend([
-                transforms.Resize(target_image_size),
+                transforms.Resize(target_image_size, antialias=True),
                 RandomCrop1dReturnCoordinates(target_image_size)
             ])
         elif crop_method == 'random-2d':
             transform_functions.extend([
-                Random2dCropReturnCoordinates(target_image_size),
+                Random2dCropReturnCoordinates(target_image_size, antialias=True),
                 transforms.Resize(target_image_size)
             ])
         elif crop_method is None:
@@ -216,3 +216,5 @@ class AnnotatedObjectsDataset(Dataset):
 
     def get_image_path(self, image_id: str) -> Path:
         raise NotImplementedError
+    
+

@@ -44,7 +44,7 @@ class ObjectsBoundingBoxConditionalBuilder(ObjectsCenterPointsConditionalBuilder
         plot = pil_image.new('RGB', figure_size, WHITE)
         draw = pil_img_draw.Draw(plot)
         font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/lato/Lato-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
             size=get_plot_font_size(font_size, figure_size)
         )
         width, height = plot.size

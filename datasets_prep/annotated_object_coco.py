@@ -3,9 +3,9 @@ from itertools import chain
 from pathlib import Path
 from typing import Iterable, Dict, List, Callable, Any
 from collections import defaultdict
-
+import torch
 from tqdm import tqdm
-
+import torchvision
 from datasets_prep.annotated_objects_dataset import AnnotatedObjectsDataset
 from datasets_prep.helper_types import Annotation, ImageDescription, Category
 
@@ -137,3 +137,56 @@ class AnnotatedObjectsCoco(AnnotatedObjectsDataset):
     def get_image_description(self, image_id: str) -> Dict[str, Any]:
         # noinspection PyProtectedMember
         return self.image_descriptions[image_id]._asdict()
+    
+
+class COCOTrain(AnnotatedObjectsCoco):
+    def __init__(self, size):
+        super().__init__(data_path='dataset/coco',
+                         split='train',
+                         keys=['image', 'objects_bbox'],
+                         no_tokens=8192,
+                         target_image_size=size,
+                         min_object_area=0.00001,
+                         min_objects_per_image=2,
+                         max_objects_per_image=30,
+                         crop_method='center',
+                         random_flip=False,
+                         use_group_parameter=True,
+                         encode_crop=True)
+
+
+class COCOValidation(AnnotatedObjectsCoco):
+    def __init__(self, size):
+        super().__init__(data_path='dataset/coco',
+                         split='validation',
+                         keys=['image', 'objects_bbox'],
+                         no_tokens=8192,
+                         target_image_size=size,
+                         min_object_area=0.00001,
+                         min_objects_per_image=2,
+                         max_objects_per_image=30,
+                         crop_method='center',
+                         random_flip=False,
+                         use_group_parameter=True,
+                         encode_crop=True)
+        
+        
+def test():
+    train_dataset = COCOTrain(size = 256)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
+    batch = next(iter(train_loader))
+    print(len(train_dataset))
+    print(torch.max(batch["image"]), torch.min(batch["image"]))
+    print(torch.max(batch["objects_bbox"]), torch.min(batch["objects_bbox"]))
+    bbox_imgs = []
+    map_fn = lambda catno: train_dataset.get_textual_label_for_category_id(train_dataset.get_category_id(catno))
+    for tknzd_bbox in batch["objects_bbox"][:8]:
+        bboximg = train_dataset.conditional_builders["objects_bbox"].plot(tknzd_bbox.detach().cpu(), map_fn, (256, 256))
+        bbox_imgs.append(bboximg)
+
+    cond_img = torch.stack(bbox_imgs, dim=0)
+    torchvision.utils.save_image(cond_img, "coord.jpg")
+    
+    
+# if __name__ == "main":
+# test()
