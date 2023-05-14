@@ -13,6 +13,7 @@ from models.util import get_flow_model
 import torchvision
 from pytorch_fid.fid_score import calculate_fid_given_paths
 
+
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
 FIXER_SOLVER = ["euler", "rk4", "midpoint"]
 

@@ -384,6 +384,7 @@ class DhariwalUNet(torch.nn.Module):
         super().__init__()
         self.label_dim = label_dim
         self.label_dropout = label_dropout
+        # self.in_channels = in_channels
         emb_channels = model_channels * channel_mult_emb
         init = dict(init_mode='kaiming_uniform', init_weight=np.sqrt(1/3), init_bias=np.sqrt(1/3))
         init_zero = dict(init_mode='kaiming_uniform', init_weight=0, init_bias=0)
@@ -430,7 +431,7 @@ class DhariwalUNet(torch.nn.Module):
         self.out_conv = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
 
-    def forward(self, noise_labels, x, y=None, augment_labels=None):
+    def forward(self, noise_labels, x, y=None, augment_labels=None, drop_half_label=False):
         # Mapping.
         emb = self.map_noise(noise_labels)
         if self.map_augment is not None and augment_labels is not None:
@@ -441,6 +442,8 @@ class DhariwalUNet(torch.nn.Module):
             tmp = torch.nn.functional.one_hot(y, self.label_dim).float()
             if self.training and self.label_dropout:
                 tmp = tmp * (torch.rand([x.shape[0], 1], device=x.device) >= self.label_dropout).to(tmp.dtype)
+            elif drop_half_label:
+                tmp[len(tmp) // 2:] *= 0.
             emb = emb + self.map_label(tmp)
         emb = silu(emb)
 
@@ -465,13 +468,14 @@ class DhariwalUNet(torch.nn.Module):
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(noise_channels, combined, y, augment_labels)
-        eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
+        model_out = self.forward(noise_labels, combined, y, augment_labels, drop_half_label=True)
+        # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
+        eps = model_out
         cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
         eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
-
+        # return torch.cat([eps, rest], dim=1)
+        return eps
 
 def get_edm_network(config):
     if config.model_type == "ncsn++":
