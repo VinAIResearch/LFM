@@ -35,7 +35,7 @@ def create_classifier(
         channel_mult = (1, 2, 3, 4)
     elif image_size == 32:
         channel_mult = (1, 2, 2, 2)
-        out_channel = 10
+        out_channel = 1000
     else:
         raise ValueError(f"unsupported image size: {image_size}")
 
@@ -45,7 +45,7 @@ def create_classifier(
 
     return EncoderUNetModel(
         image_size=image_size,
-        in_channels=3,
+        in_channels=4,
         model_channels=classifier_width,
         out_channels=out_channel,
         num_res_blocks=classifier_depth,

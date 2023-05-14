@@ -11,6 +11,7 @@ import numpy as np
 from models.encoder_classifier import create_classifier, classifier_defaults
 from torchdiffeq import odeint_adjoint as odeint
 import os
+from datasets_prep.latent_datasets import LatentDataset
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -19,6 +20,8 @@ from torch.multiprocessing import Process
 import torch.distributed as dist
 import shutil
 import time
+import torchvision.transforms as transforms
+from tqdm import tqdm
 
 
 
@@ -85,7 +88,8 @@ def train(rank, gpu, args):
     batch_size = args.batch_size
     
     
-    dataset = get_dataset(args)
+    dataset = LatentDataset(root=args.data_dir, train=True, transform=transforms.Compose([
+                        transforms.RandomHorizontalFlip()]))
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                     num_replicas=args.world_size,
                                                                     rank=rank)
@@ -146,7 +150,7 @@ def train(rank, gpu, args):
         top1 = AverageMeter()
         top5 = AverageMeter()
         end = time.time()
-        for iteration, (x, y) in enumerate(data_loader):
+        for (x, y) in tqdm(data_loader, desc="Epoch {}".format(epoch)):
             data_time.update(time.time() - end)
             x_1 = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
@@ -226,6 +230,7 @@ if __name__ == '__main__':
                             help='in channel image')
     
     parser.add_argument('--exp', default='test', help='name of experiment')
+    parser.add_argument('--data_dir', default='test', help='name of experiment')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
 
     parser.add_argument('--batch_size', type=int, default=128, help='input batch size')
