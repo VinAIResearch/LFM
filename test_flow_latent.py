@@ -135,8 +135,8 @@ def sample_and_test(rank, gpu, args):
     iters_needed = args.n_sample // args.batch_size
     save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
-    # if args.method in FIXER_SOLVER:
-    #     save_dir += "_s{}".format(args.num_steps)
+    if args.method in FIXER_SOLVER:
+        save_dir += "_s{}".format(args.num_steps)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -261,7 +261,7 @@ def sample_and_test(rank, gpu, args):
             fid = calculate_fid_given_paths(paths=paths, **kwargs)
             print('FID = {}'.format(fid))
             with open(args.output_log, "a") as f:
-                f.write('Epoch = {}, FID = {}'.format(args.epoch_id, fid))
+                f.write('Epoch = {}, FID = {}\n'.format(args.epoch_id, fid))
     else:
         print("Inference")
         with torch.no_grad():
