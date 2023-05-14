@@ -38,7 +38,7 @@ export EXP={exp}
 export OUTPUT_LOG={output_log}
 
 echo "----------------------------"
-echo $MODEL_TYPE $EPOCH_ID $DATASET $EXP
+echo $MODEL_TYPE $EPOCH_ID $DATASET $EXP {method} {num_steps}
 echo "----------------------------"
 
 CUDA_VISIBLE_DEVICES={device} python test_flow_latent.py --exp $EXP \
@@ -57,14 +57,14 @@ CUDA_VISIBLE_DEVICES={device} python test_flow_latent.py --exp $EXP \
 model_type = "adm" # or "DiT-L/2" or "adm"
 dataset = "lsun_bedroom"
 exp = "laflo_bed_f8_lr5e-5"
-BASE_PORT = 8016
+BASE_PORT = 8001
 num_gpus = 1
-device = "1"
+device = "0"
 
 config = pd.DataFrame({
-    "epochs": [375],
-    "num_steps": [50],
-    "methods": ['dopri5'],
+    "epochs": [400, 425],
+    "num_steps": [0]*2,
+    "methods": ['dopri5']*2,
 })
 print(config)
 
@@ -93,6 +93,7 @@ for idx, row in config.iterrows():
     mode = "w" if idx == 0 else "a"
     with open(slurm_file_path, mode) as f:
         f.write(slurm_command)
+print("Slurm script is saved at", slurm_file_path)
 
 
 # for idx, epoch_id in enumerate(epochs):
