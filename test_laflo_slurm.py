@@ -107,6 +107,7 @@ for idx, row in config.iterrows():
     mode = "w" if idx == 0 else "a"
     with open(slurm_file_path, mode) as f:
         f.write(slurm_command)
+print("Slurm script is saved at", slurm_file_path)
 
 
 # for idx, epoch_id in enumerate(epochs):
