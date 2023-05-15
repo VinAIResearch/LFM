@@ -49,22 +49,22 @@ CUDA_VISIBLE_DEVICES={device} python test_flow_latent.py --exp $EXP \
     --method {method} --num_steps {num_steps} \
     --compute_fid --output_log $OUTPUT_LOG \
     --master_port $MASTER_PORT  --num_process_per_node {num_gpus} \
-    # --use_karras_samplers \
-
+    --use_karras_samplers \
+    # --measure_time \
 """
 
 ###### ARGS
-model_type = "adm" # or "DiT-L/2" or "adm"
-dataset = "lsun_bedroom"
-exp = "laflo_bed_f8_lr5e-5"
-BASE_PORT = 8001
-num_gpus = 1
-device = "0"
+model_type = "DiT-L/2" # or "DiT-L/2" or "adm"
+dataset = "celeba_256"
+exp = "laflo_celeb_f8_dit"
+BASE_PORT = 8004
+num_gpus = 2
+device = "0,1"
 
 config = pd.DataFrame({
-    "epochs": [400, 425],
-    "num_steps": [0]*2,
-    "methods": ['dopri5']*2,
+    "epochs": [475],
+    "num_steps": [40],
+    "methods": ['stochastic'],
 })
 print(config)
 
