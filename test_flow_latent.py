@@ -105,10 +105,13 @@ def sample_from_model2(model, x, model_kwargs, generator, args):
 
 def sample_and_test(rank, gpu, args):
     from diffusers.models import AutoencoderKL
+    # torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_grad_enabled(False)
-    torch.manual_seed(args.seed + rank)
-    torch.cuda.manual_seed(args.seed + rank)
-    torch.cuda.manual_seed_all(args.seed + rank)
+    
+    seed = args.seed + rank
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
     device = torch.device('cuda:{}'.format(gpu))
 
@@ -153,7 +156,7 @@ def sample_and_test(rank, gpu, args):
     # seed generator
     #### seed should be aligned with rank 
     #### as the same seed can cause identical generation on other gpus
-    generator = get_generator(args.generator, args.batch_size, args.seed + rank) 
+    generator = get_generator(args.generator, args.batch_size, seed)
 
     def run_sampling(num_samples, generator):
         x = generator.randn(num_samples, 4, args.image_size//8, args.image_size//8).to(device)
@@ -187,9 +190,19 @@ def sample_and_test(rank, gpu, args):
         num_trials = 300
         for i in tqdm(range(num_trials)):
             x_0 = generator.randn(1, 4, args.image_size//8, args.image_size//8).to(device)
-            y = None if args.num_classes in [None, 1] else generator.randint(args.num_classes, (1,), device=device) 
-            sample_model = partial(model, y=y)
-            _, nfe = sample_from_model(sample_model, x_0, args)
+            if args.num_classes in [None, 1]:
+                model_kwargs = {}
+            else:
+                y = generator.randint(0, args.num_classes, (1,), device=device)
+                # Setup classifier-free guidance:
+                if args.cfg_scale > 1.:
+                    x = torch.cat([x, x], 0)
+                    y_null = torch.tensor([args.num_classes] * num_samples, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
+                    y = torch.cat([y, y_null], 0)
+                    model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+                else:
+                    model_kwargs = dict(y=y)
+            _, nfe = sample_from_model(model, x_0, model_kwargs, args)
             average_nfe += nfe/num_trials
         print(f"Average NFE over {num_trials} trials: {int(average_nfe)}")
         exit(0)
@@ -248,7 +261,7 @@ def sample_and_test(rank, gpu, args):
         # Figure out how many samples we need to generate on each GPU and how many iterations we need to run:
         n = args.batch_size
         global_batch_size = n * args.world_size
-        total_samples = int(math.ceil(50000 / global_batch_size) * global_batch_size)
+        total_samples = int(math.ceil(args.n_sample / global_batch_size) * global_batch_size)
         if rank == 0:
             print(f"Total number of images that will be sampled: {total_samples}")
         assert total_samples % args.world_size == 0, "total_samples must be divisible by world_size"
@@ -301,6 +314,8 @@ def sample_and_test(rank, gpu, args):
             print('FID = {}'.format(fid))
             with open(args.output_log, "a") as f:
                 f.write('Epoch = {}, FID = {}\n'.format(args.epoch_id, fid))
+        dist.barrier()
+        dist.destroy_process_group()
     else:
         print("Inference")
         with torch.no_grad():
