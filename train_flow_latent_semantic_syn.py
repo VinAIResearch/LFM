@@ -106,14 +106,14 @@ def train(rank, gpu, args):
                                                pin_memory=True,
                                                sampler=train_sampler,
                                                drop_last = True)
-    
+    args.layout = False
     model = get_flow_model(args).to(device)
     first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
     for param in first_stage_model.parameters():
         param.requires_grad = False
-        
+    
     cond_stage_model = SpatialRescaler(n_stages=3, in_channels=num_cls, out_channels=4, multiplier=0.5).to(device)
         
     print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
