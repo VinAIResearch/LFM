@@ -59,6 +59,8 @@ def main(args):
         real_img_dir = 'pytorch_fid/ffhq_stat.npy'
     elif args.dataset == "lsun_bedroom":
         real_img_dir = 'pytorch_fid/lsun_bedroom_stat.npy'
+    elif args.dataset in ["latent_imagenet_256", "imagenet_256"]:
+        real_img_dir = 'pytorch_fid/imagenet_stat.npy'
     else:
         real_img_dir = args.real_img_dir
     
@@ -83,6 +85,8 @@ def main(args):
     # save_dir = "./generated_samples/{}".format(args.dataset)
     if args.method in FIXER_SOLVER:
         save_dir += "_s{}".format(args.num_steps)
+    if args.cfg_scale > 1.:
+        save_dir += "_cfg{}".format(args.cfg_scale)
     
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
