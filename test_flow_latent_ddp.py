@@ -41,8 +41,11 @@ def main(args):
     dist.init_process_group("nccl")
     rank = dist.get_rank()
     device = rank % torch.cuda.device_count()
-    seed = args.seed * dist.get_world_size() + rank
+    # seed = args.seed * dist.get_world_size() + rank
+    seed = args.seed + rank
     torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.cuda.set_device(device)
     print(f"Starting rank={rank}, seed={seed}, world_size={dist.get_world_size()}.")
     
@@ -86,7 +89,7 @@ def main(args):
 
     # seed generator
     #### seed should be aligned with rank 
-    generator = get_generator(args.generator, args.batch_size, seed)
+    generator = get_generator(args.generator, args.n_sample, seed)
 
     def run_sampling(num_samples, generator):
         x = generator.randn(num_samples, 4, args.image_size//8, args.image_size//8).to(device)

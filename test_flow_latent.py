@@ -156,7 +156,7 @@ def sample_and_test(rank, gpu, args):
     # seed generator
     #### seed should be aligned with rank 
     #### as the same seed can cause identical generation on other gpus
-    generator = get_generator(args.generator, args.batch_size, seed)
+    generator = get_generator(args.generator, args.n_sample, seed)
 
     def run_sampling(num_samples, generator):
         x = generator.randn(num_samples, 4, args.image_size//8, args.image_size//8).to(device)
@@ -364,6 +364,8 @@ if __name__ == '__main__':
     parser.add_argument('--measure_time', action='store_true', default=False,
                             help='wheter or not measure time')
     parser.add_argument('--epoch_id', type=int,default=1000)
+    parser.add_argument('--n_sample', type=int, default=50000,
+                            help='number of sampled images')
 
     parser.add_argument('--model_type', type=str, default="adm",
                             help='model_type', choices=['adm', 'ncsn++', 'ddpm++', 'DiT-B/2', 'DiT-L/2', 'DiT-XL/2'])
@@ -379,8 +381,6 @@ if __name__ == '__main__':
                             help='in channel image')
     parser.add_argument('--nf', type=int, default=256,
                             help='channel of image')
-    parser.add_argument('--n_sample', type=int, default=50000,
-                            help='number of sampled images')
     parser.add_argument('--centered', action='store_false', default=True,
                             help='-1,1 scale')
     parser.add_argument("--resamp_with_conv", type=bool, default=True)
