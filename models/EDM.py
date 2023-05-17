@@ -431,14 +431,14 @@ class DhariwalUNet(torch.nn.Module):
         self.out_conv = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
 
-    def forward(self, noise_labels, x, y=None, augment_labels=None, drop_half_label=False):
+    def forward(self, noise_labels, x, y=None, augment_labels=None, drop_half_label=False, **kwargs):
         # Mapping.
         emb = self.map_noise(noise_labels)
         if self.map_augment is not None and augment_labels is not None:
             emb = emb + self.map_augment(augment_labels)
         emb = silu(self.map_layer0(emb))
         emb = self.map_layer1(emb)
-        if self.map_label is not None:
+        if self.map_label is not None and y is not None:
             tmp = torch.nn.functional.one_hot(y, self.label_dim).float()
             if self.training and self.label_dropout:
                 tmp = tmp * (torch.rand([x.shape[0], 1], device=x.device) >= self.label_dropout).to(tmp.dtype)
@@ -461,7 +461,7 @@ class DhariwalUNet(torch.nn.Module):
         x = self.out_conv(silu(self.out_norm(x)))
         return x 
 
-    def forward_with_cfg(self, noise_labels, x, y=None, augment_labels=None, cfg_scale=1.0):
+    def forward_with_cfg(self, noise_labels, x, y=None, augment_labels=None, cfg_scale=1.0, **kwargs):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """

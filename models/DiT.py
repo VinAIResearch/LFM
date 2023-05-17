@@ -167,6 +167,7 @@ class DiT(nn.Module):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
+        self.num_classes = num_classes
 
         self.x_embedder = PatchEmbed(img_resolution, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -232,7 +233,7 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, t, x, y=None):
+    def forward(self, t, x, y=None, **kwargs):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -240,7 +241,7 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         if y is None:
-            y = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+            y = torch.ones(x.size(0), dtype=torch.long, device=x.device) * self.num_classes
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
@@ -251,7 +252,7 @@ class DiT(nn.Module):
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, t, x, y=None, cfg_scale=1.0):
+    def forward_with_cfg(self, t, x, y=None, cfg_scale=1.0, **kwargs):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """

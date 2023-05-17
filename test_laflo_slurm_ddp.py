@@ -56,18 +56,18 @@ CUDA_VISIBLE_DEVICES={device} torchrun --nnodes=1 --nproc_per_node={num_gpus} te
 """
 
 ###### ARGS
-model_type = "DiT-B/2" # or "DiT-L/2" or "adm"
+model_type = "adm" # or "DiT-L/2" or "adm"
 dataset = "latent_imagenet_256"
-exp = "laflo_imnet_f8_ditb2"
-BASE_PORT = 8014
+exp = "laflo_imnet_f8" # "laflo_imnet_f8"
+BASE_PORT = 8015
 num_gpus = 8
 device = "0,1,2,3,4,5,6,7"
 
 config = pd.DataFrame({
-    "epochs": [775]*3,
-    "num_steps": [0]*3,
-    "methods": ['dopri5']*3,
-    "cfg_scale": [1.25, 1.5, 3.],
+    "epochs": [775]*2,
+    "num_steps": [0]*2,
+    "methods": ['dopri5']*2,
+    "cfg_scale": [1, 1.5],
 })
 print(config)
 

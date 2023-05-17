@@ -126,6 +126,8 @@ def sample_and_test(rank, gpu, args):
         real_img_dir = 'pytorch_fid/ffhq_stat.npy'
     elif args.dataset == "lsun_bedroom":
         real_img_dir = 'pytorch_fid/lsun_bedroom_stat.npy'
+    elif args.dataset in ["latent_imagenet_256", "imagenet_256"]:
+        real_img_dir = 'pytorch_fid/imagenet_stat.npy'
     else:
         real_img_dir = args.real_img_dir
     

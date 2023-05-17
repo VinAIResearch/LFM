@@ -156,7 +156,7 @@ def main(args):
         fid = calculate_fid_given_paths(paths=paths, **kwargs)
         print('FID = {}'.format(fid))
         with open(args.output_log, "a") as f:
-            f.write('Epoch = {}, FID = {}\n'.format(args.epoch_id, fid))
+            f.write('Epoch = {}, FID = {}, cfg_scale = {}\n'.format(args.epoch_id, fid, args.cfg_scale))
     dist.barrier()
     dist.destroy_process_group()
 
