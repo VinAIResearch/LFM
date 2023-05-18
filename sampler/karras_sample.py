@@ -26,6 +26,8 @@ def karras_sample(
     s_noise=1.0,
     generator=None,
     ts=None,
+    classifier=None,
+    cond_func=None,
 ):
     if generator is None:
         generator = get_generator("dummy")
@@ -74,16 +76,36 @@ def karras_sample(
         if clip_denoised:
             denoised = denoised.clamp(-1, 1)
         return denoised
+    
+    def cls_denoiser(x_t, sigma):
+        # if model_kwargs.get("cfg_scale", 1.) > 1.:
+        #     vec = model.forward_with_cfg(sigma, x_t, **model_kwargs)
+        # else:
+        #     vec = model(sigma, x_t, **model_kwargs)
+        vec = model(sigma, x_t)
+        cond_vec = cond_func(classifier, x_t, 1.-sigma, **model_kwargs)
+        return vec + cond_vec
 
-    x_0 = sample_fn(
-        denoiser,
-        x_T,
-        sigmas,
-        generator,
-        progress=progress,
-        callback=callback,
-        **sampler_args,
-    )
+    if classifier is not None:
+        x_0 = sample_fn(
+            cls_denoiser,
+            x_T,
+            sigmas,
+            generator,
+            progress=progress,
+            callback=callback,
+            **sampler_args,
+        )
+    else:
+        x_0 = sample_fn(
+            denoiser,
+            x_T,
+            sigmas,
+            generator,
+            progress=progress,
+            callback=callback,
+            **sampler_args,
+        )
     return x_0
 
 

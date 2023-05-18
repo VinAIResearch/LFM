@@ -1,18 +1,24 @@
-# load the cifar checkpoint
 import argparse
 import torch
 import torch.nn.functional as F
 import os
 import numpy as np
+from tqdm import tqdm
 from torchdiffeq import odeint_adjoint as odeint
 import torchvision
+
+import math
+
+import torch.distributed as dist
+from torch.multiprocessing import Process
+
 from pytorch_fid.fid_score import calculate_fid_given_paths
 from models.encoder_classifier import create_classifier, classifier_defaults
-from diffusers.models import AutoencoderKL
 
 from sampler.karras_sample import karras_sample
 from sampler.random_util import get_generator
 
+from ddp_utils import init_processes
 from models import create_network
 # from models.util import get_flow_model
 from test_flow_latent import NFECount
@@ -21,10 +27,10 @@ def args_to_dict(args, keys):
     return {k: getattr(args, k) for k in keys}
 
 ADAPTIVE_SOLVER = ["dopri5", "dopri8", "adaptive_heun", "bosh3"]
-FIXER_SOLVER = ["euler", "rk4", "midpoint"]
+FIXER_SOLVER = ["euler", "rk4", "midpoint", "stochastic"]
 
 
-def get_cond(classifier, x, s, y, scale):
+def get_cond(classifier, x, s, y, scale, **kwargs):
     assert y is not None
     with torch.enable_grad():
         x_in = x.detach().requires_grad_(True)
@@ -32,8 +38,48 @@ def get_cond(classifier, x, s, y, scale):
         logits = classifier(x_in, s_)
         log_probs = torch.log_softmax(logits, dim=-1)
         selected = log_probs[range(len(logits)), y.view(-1)]
-        s_ = s_[:, None, None, None]
-        return 2 * torch.autograd.grad(selected.sum(), x_in)[0] * scale * s_/(1 + 1e-4 - s_)
+        return torch.autograd.grad(selected.sum(), x_in)[0] * scale * s / (1-s)
+
+def get_sampler(flow_model, n_steps, device = "cuda"):
+    t_final = 0.
+    t_start = 1.
+    t = torch.linspace(t_start, t_final, n_steps + 1, device=device)
+    
+    def sampler(x):
+        list_vec = []
+        xs = []
+        ones = torch.ones(x.shape[0], device=device)
+        nfes = 0
+        for n in range(n_steps):
+            vec = flow_model(ones * t[n], x)
+            # list_vec.append(vec)
+            nfes += 1
+            h = (t[n + 1] - t[n])
+            x = x +  vec
+            # xs.append(x)
+        return x, nfes, list_vec, xs
+    
+    def sampler_cond(x, y, classifier, scale):
+        list_vec = []
+        xs = []
+        ones = torch.ones(x.shape[0], device=device)
+        y  = torch.randint(0, 1000, (x.shape[0],), device=device)
+        y = y.long()
+        nfes = 0
+        for n in range(n_steps):
+            with torch.no_grad():
+                vec = flow_model(t[n], x, y)
+            cond_vec = get_cond(classifier, x, 1-t[n], y, scale)
+            # print("cond {}".format(n), torch.max(cond_eps), torch.min(cond_eps))
+            # print("vec {}".format(n), torch.max(vec), torch.min(vec))
+            vec = vec + cond_vec
+            # list_vec.append(vec)
+            nfes += 1
+            h = (t[n + 1] - t[n])
+            x = x +  h*vec
+            # xs.append(x)
+        return x, nfes, list_vec, xs
+    return sampler, sampler_cond
 
 
 def sample_from_model(model, x_0, model_kwargs, classifier, args):
@@ -53,12 +99,12 @@ def sample_from_model(model, x_0, model_kwargs, classifier, args):
     t = torch.tensor([1., 0.], device="cuda")
 
     def denoiser(t, x_0):
-        # if args.cfg_scale > 1.:
-        #     return model.forward_with_cfg(t, x_0, **model_kwargs)
-        # else:
-        #     return model(t, x_0, **model_kwargs)
-        vec = model(t, x_0)
-        cond_vec = get_cond(classifier, x_0, t, **model_kwargs)
+        if args.cfg_scale > 1.:
+            vec = model.forward_with_cfg(t, x_0, **model_kwargs)
+        else:
+            vec = model(t, x_0, **model_kwargs)
+        # vec = model(t, x_0)
+        cond_vec = get_cond(classifier, x_0, 1.-t, **model_kwargs)
         return vec + cond_vec
 
     fake_image = odeint(denoiser, 
@@ -101,54 +147,60 @@ def sample_from_model2(model, x, model_kwargs, generator, classifier, args):
     return sample
 
 
-def get_sampler(flow_model, n_steps, device = "cuda"):
-    t_final = 0.
-    t_start = 1.
-    t = torch.linspace(t_start, t_final, n_steps + 1, device=device)
+# def get_sampler(flow_model, n_steps, device = "cuda"):
+#     t_final = 0.
+#     t_start = 1.
+#     t = torch.linspace(t_start, t_final, n_steps + 1, device=device)
     
-    def sampler(x):
-        list_vec = []
-        xs = []
-        ones = torch.ones(x.shape[0], device=device)
-        nfes = 0
-        for n in range(n_steps):
-            vec = flow_model(ones * t[n], x)
-            # list_vec.append(vec)
-            nfes += 1
-            h = (t[n + 1] - t[n])
-            x = x + h * vec
-            # xs.append(x)
-        return x, nfes, list_vec, xs
+#     def sampler(x):
+#         list_vec = []
+#         xs = []
+#         ones = torch.ones(x.shape[0], device=device)
+#         nfes = 0
+#         for n in range(n_steps):
+#             vec = flow_model(ones * t[n], x)
+#             # list_vec.append(vec)
+#             nfes += 1
+#             h = (t[n + 1] - t[n])
+#             x = x + h * vec
+#             # xs.append(x)
+#         return x, nfes, list_vec, xs
     
-    def sampler_cond(x, y, classifier, scale):
-        list_vec = []
-        xs = []
-        ones = torch.ones(x.shape[0], device=device)
-        y  = torch.ones(x.shape[0], device=device)*y
-        y = y.long()
-        nfes = 0
-        for n in range(n_steps):
-            s = n/n_steps
-            with torch.no_grad():
-                vec = flow_model(ones * t[n], x)
-            cond_vec = get_cond(classifier, x, s, y, scale)
-            # print("cond {}".format(n), torch.max(cond_eps), torch.min(cond_eps))
-            # print("vec {}".format(n), torch.max(vec), torch.min(vec))
-            vec = vec + cond_vec
-            # list_vec.append(vec)
-            nfes += 1
-            h = (t[n + 1] - t[n])
-            x = x + h * vec
-            # xs.append(x)
-        return x, nfes, list_vec, xs
-    return sampler, sampler_cond
+#     def sampler_cond(x, y, classifier, scale):
+#         list_vec = []
+#         xs = []
+#         ones = torch.ones(x.shape[0], device=device)
+#         y  = torch.ones(x.shape[0], device=device)*y
+#         y = y.long()
+#         nfes = 0
+#         for n in range(n_steps):
+#             s = n/n_steps
+#             with torch.no_grad():
+#                 vec = flow_model(ones * t[n], x)
+#             cond_vec = get_cond(classifier, x, s, y, scale)
+#             # print("cond {}".format(n), torch.max(cond_eps), torch.min(cond_eps))
+#             # print("vec {}".format(n), torch.max(vec), torch.min(vec))
+#             vec = vec + cond_vec
+#             # list_vec.append(vec)
+#             nfes += 1
+#             h = (t[n + 1] - t[n])
+#             x = x + h * vec
+#             # xs.append(x)
+#         return x, nfes, list_vec, xs
+#     return sampler, sampler_cond
 
 
-def sample_and_test(args):
-    torch.manual_seed(args.seed)
+def sample_and_test(rank, gpu, args):
+    from diffusers.models import AutoencoderKL
+    torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_grad_enabled(False)
 
-    device = 'cuda:0'
+    seed = args.seed + rank
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    device = torch.device('cuda:{}'.format(gpu))
     
     if args.dataset == 'cifar10':
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
@@ -160,6 +212,8 @@ def sample_and_test(args):
         real_img_dir = 'pytorch_fid/ffhq_stat.npy'
     elif args.dataset == "lsun_bedroom":
         real_img_dir = 'pytorch_fid/lsun_bedroom_stat.npy'
+    elif args.dataset in ["latent_imagenet_256", "imagenet_256"]:
+        real_img_dir = 'pytorch_fid/imagenet_stat.npy'
     else:
         real_img_dir = args.real_img_dir
     
@@ -187,55 +241,112 @@ def sample_and_test(args):
 
     first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device)
         
-    iters_needed = 50000 //args.batch_size
+    iters_needed = args.n_sample //args.batch_size
     
-    save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
+    save_dir = "./generated_samples/{}/cls_exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
+    if args.method in FIXER_SOLVER:
+        save_dir += "_s{}".format(args.num_steps)
+    save_dir += "_scale{}".format(args.scale)
+    if args.cfg_scale > 1.:
+        save_dir += "_cfg{}".format(args.cfg_scale)
     # save_dir = "./generated_samples/{}".format(args.dataset)
     
-    if not os.path.exists(save_dir):
+    if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     # seed generator
     #### seed should be aligned with rank 
     #### as the same seed can cause identical generation on other gpus
-    generator = get_generator(args.generator, 50000, args.seed)
+    generator = get_generator(args.generator, args.n_sample, seed)
     
     if args.compute_fid:
-        for i in range(iters_needed):
+        print("Compute fid")
+        dist.barrier()
+
+        # Figure out how many samples we need to generate on each GPU and how many iterations we need to run:
+        n = args.batch_size
+        global_batch_size = n * args.world_size
+        total_samples = int(math.ceil(args.n_sample / global_batch_size) * global_batch_size)
+        if rank == 0:
+            print(f"Total number of images that will be sampled: {total_samples}")
+        assert total_samples % args.world_size == 0, "total_samples must be divisible by world_size"
+        samples_needed_this_gpu = int(total_samples // args.world_size)
+        iters_needed = int(samples_needed_this_gpu // n)
+        pbar = range(iters_needed)
+        pbar = tqdm(pbar) if rank == 0 else pbar
+        total = 0
+
+        for i in pbar:
             with torch.no_grad():
-                x_0 = generator.randn(args.batch_size, args.num_in_channels, args.classifier_image_size, args.classifier_image_size).to(device)
-                fake_sample = sample_from_model(model, x_0, args)[-1]
-                fake_sample = to_range_0_1(fake_sample)
+                x = generator.randn(args.batch_size, args.num_in_channels, args.classifier_image_size, args.classifier_image_size).to(device)
+                y = generator.randint(0, args.num_classes, (args.batch_size,), device=device).long()
+                # Setup classifier-free guidance:
+                if args.cfg_scale > 1.:
+                    x = torch.cat([x, x], 0)
+                    y_null = torch.tensor([args.num_classes] * y.size(0), device=device).long() if "DiT" in args.model_type else torch.zeros_like(y)
+                    y = torch.cat([y, y_null], 0)
+                
+                _, sampler_cond = get_sampler(model, n_steps=int(1/args.step_size), device=device)
+                fake_sample, nfe, list_vec, xs = sampler_cond(x, y, classifier, args.scale)
+
+                # model_kwargs = {'y': y, 'cfg_scale': args.cfg_scale, 'scale': args.scale}
+                # if not args.use_karras_samplers:
+                #     fake_sample = sample_from_model(model, x, model_kwargs, classifier, args)[-1]
+                # else:
+                #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, classifier, args)
+
+                fake_sample = first_stage_model.decode(fake_sample / args.scale_factor).sample
+                fake_sample = torch.clamp(to_range_0_1(fake_sample), 0, 1)
+
                 for j, x in enumerate(fake_sample):
-                    index = i * args.batch_size + j 
+                    index = j * args.world_size + rank + total
                     torchvision.utils.save_image(x, '{}/{}.jpg'.format(save_dir, index))
-                print('generating batch ', i)
+                if rank == 0:
+                    print('generating batch ', i)
+                total += global_batch_size
         
-        paths = [save_dir, real_img_dir]
-    
-        kwargs = {'batch_size': 200, 'device': device, 'dims': 2048}
-        fid = calculate_fid_given_paths(paths=paths, **kwargs)
-        print('FID = {}'.format(fid))
+
+        # make sure all processes have finished
+        dist.barrier()
+        if rank == 0:
+            paths = [save_dir, real_img_dir]
+            kwargs = {'batch_size': 200, 'device': device, 'dims': 2048}
+            fid = calculate_fid_given_paths(paths=paths, **kwargs)
+            print('FID = {}'.format(fid))
+            with open(args.output_log, "a") as f:
+                f.write('Epoch = {}, FID = {}, scale = {}, cfg = {} \n'.format(args.epoch_id, fid, args.scale, args.cfg_scale))
+        dist.barrier()
+        dist.destroy_process_group()
     else:
-        generator = get_generator(args.generator, args.batch_size, args.seed)
-        x_0 = generator.randn(args.batch_size, args.num_in_channels, args.classifier_image_size, args.classifier_image_size).to(device)
-        # y = 0 * torch.ones(args.batch_size, device=device).long() # generator.randint(0, args.num_classes, (args.batch_size,), device=device)
+        print("Inference")
+        x = generator.randn(args.batch_size, args.num_in_channels, args.classifier_image_size, args.classifier_image_size).to(device)
+        # y = 0 * torch.ones(args.batch_size, device=device).long()
+        y = generator.randint(0, args.num_classes, (args.batch_size,), device=device).long()
+        # Setup classifier-free guidance:
+        if args.cfg_scale > 1.:
+            x = torch.cat([x, x], 0)
+            y_null = torch.tensor([args.num_classes] * y.size(0), device=device).long() if "DiT" in args.model_type else torch.zeros_like(y)
+            y = torch.cat([y, y_null], 0)
 
         _, sampler_cond = get_sampler(model, n_steps=int(1/args.step_size), device=device)
-        fake_sample, nfe, list_vec, xs = sampler_cond(x_0, 0, classifier, args.cfg_scale)
+        fake_sample, nfe, list_vec, xs = sampler_cond(x, y, classifier, args.scale)
         # print("NFE: {}".format(nfe))
 
+        # model_kwargs = {'y': y, 'cfg_scale': args.cfg_scale, 'scale': args.scale}
         # if not args.use_karras_samplers:
-        #     fake_sample = sample_from_model(model, x_0, {'y': y, 'scale': args.cfg_scale}, classifier, args)[-1]
+        #     fake_sample = sample_from_model(model, x, model_kwargs, classifier, args)[-1]
         # else:
-        #     fake_sample = sample_from_model2(model, x_0, {'y': y, 'scale': args.cfg_scale}, generator, classifier, args)
+        #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, classifier, args)
         fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
         fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
 
         if not args.use_karras_samplers:
-            save_path = './cls_samples_{}_{}_scale{}.jpg'.format(args.dataset, args.method, args.cfg_scale)
+            save_path = './cls_samples_{}_{}_scale{}_cfg{}.jpg'.format(args.dataset, args.method, args.scale, args.cfg_scale)
         else:
-            save_path = './cls_samples_{}_{}_{}_scale{}.jpg'.format(args.dataset, args.method, args.num_steps, args.cfg_scale)
+            save_path = './cls_samples_{}_{}_{}_scale{}_cfg{}.jpg'.format(args.dataset, args.method, args.num_steps, args.scale, args.cfg_scale)
+
+        if args.cfg_scale > 1.:
+            fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
         
         torchvision.utils.save_image(fake_image, save_path)
         print("Samples are save at '{}".format(save_path))
@@ -260,6 +371,8 @@ if __name__ == '__main__':
     parser.add_argument('--compute_nfe', action='store_true', default=False,
                             help='whether or not compute NFE')
     parser.add_argument('--epoch_id', type=int,default=1000)
+    parser.add_argument('--n_sample', type=int, default=50000,
+                            help='number of sampled images')
 
     parser.add_argument('--model_type', type=str, default="adm",
                             help='model_type', choices=['adm', 'ncsn++', 'ddpm++', 'DiT-B/2', 'DiT-L/2', 'DiT-XL/2'])
@@ -306,6 +419,7 @@ if __name__ == '__main__':
     # parser.add_argument("--use_new_attention_order", type=bool, default=False)
 
     parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
+    parser.add_argument('--output_log', type=str, default="")
     
     #######################################
     parser.add_argument('--exp', default='exp_1_OT', help='name of experiment')
@@ -334,8 +448,42 @@ if __name__ == '__main__':
     parser.add_argument('--perturb', action='store_true', default=False)
     parser.add_argument('--cfg_scale', type=float, default=1.,
                             help='Scale for classifier-free guidance')
+    parser.add_argument('--scale', type=float, default=-1.5,
+                            help='Scale for classifier-guided guidance')
         
+    ###ddp
+    parser.add_argument('--num_proc_node', type=int, default=1,
+                        help='The number of nodes in multi node env.')
+    parser.add_argument('--num_process_per_node', type=int, default=1,
+                        help='number of gpus')
+    parser.add_argument('--node_rank', type=int, default=0,
+                        help='The index of node.')
+    parser.add_argument('--local_rank', type=int, default=0,
+                        help='rank of process in the node')
+    parser.add_argument('--master_address', type=str, default='127.0.0.1',
+                        help='address for master')
+    parser.add_argument('--master_port', type=str, default='6000',
+                        help='port for master')
 
     args = parser.parse_args()
-    
-    sample_and_test(args)
+    args.world_size = args.num_proc_node * args.num_process_per_node
+    size = args.num_process_per_node
+
+    if size > 1 and args.compute_fid:
+        processes = []
+        for rank in range(size):
+            args.local_rank = rank
+            global_rank = rank + args.node_rank * args.num_process_per_node
+            global_size = args.num_proc_node * args.num_process_per_node
+            args.global_rank = global_rank
+            print('Node rank %d, local proc %d, global proc %d' % (args.node_rank, rank, global_rank))
+            p = Process(target=init_processes, args=(global_rank, global_size, sample_and_test, args))
+            p.start()
+            processes.append(p)
+            
+        for p in processes:
+            p.join()
+    else:
+        print('starting in debug mode')
+        
+        init_processes(0, size, sample_and_test, args)
