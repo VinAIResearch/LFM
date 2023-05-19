@@ -71,15 +71,16 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --save_content_every 10 \
 #     --master_port $MASTER_PORT --num_process_per_node 1 \
 
-# python train_flow_latent.py --exp laflo_imnet_f8 \
-#     --dataset latent_imagenet_256 --datadir ./data/latent_imagenet_256/ --num_classes 1000 \
-#     --batch_size 128 --num_epoch 800 --label_dim 1000 \
-#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 3 \
-#     --lr 1e-4 --scale_factor 0.18215 \
-#     --save_content --save_content_every 10 \
-#     --master_port $MASTER_PORT --num_process_per_node 8 \
-
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 python train_flow_latent.py --exp laflo_imnet_f8 \
+     --dataset latent_imagenet_256 --datadir ./data/latent_imagenet/ --num_classes 1000 \
+     --batch_size 128 --num_epoch 1800 --label_dim 1000 \
+     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 3 \
+     --lr 1e-5 --scale_factor 0.18215 \
+     --save_content --save_content_every 10 \
+     --master_port $MASTER_PORT --num_process_per_node 6 \
+     --resume \
+     --no_lr_decay
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python train_flow_latent.py --exp laflo_imnet_f8_ditb2 \
 #     --dataset latent_imagenet_256 --datadir ./data/latent_imagenet_256/ \
 #     --batch_size 144 --num_epoch 800 --label_dim 1000 \
@@ -91,16 +92,16 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --save_content --save_content_every 10 \
 #     --master_port $MASTER_PORT --num_process_per_node 8 \
 
-CUDA_VISIBLE_DEVICES=1 python train_flow_latent.py --exp laflo_celeb_f8_dit \
-    --dataset celeba_256 --datadir data/celeba/celeba-lmdb \
-    --batch_size 32 --num_epoch 800 \
-    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-    --lr 2e-4 --scale_factor 0.18215 \
-    --model_type DiT-L/2 --num_classes 1 --label_dropout 0. \
-    --save_content --save_content_every 10 \
-    --model_ckpt model_500.pth \
-    --master_port $MASTER_PORT
+#CUDA_VISIBLE_DEVICES=1 python train_flow_latent.py --exp laflo_celeb_f8_dit \
+#    --dataset celeba_256 --datadir data/celeba/celeba-lmdb \
+#    --batch_size 32 --num_epoch 800 \
+#    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+#    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#    --lr 2e-4 --scale_factor 0.18215 \
+#    --model_type DiT-L/2 --num_classes 1 --label_dropout 0. \
+#    --save_content --save_content_every 10 \
+#    --model_ckpt model_500.pth \
+#    --master_port $MASTER_PORT
 
 # CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_ffhq_f8_dit \
 #     --dataset ffhq_256 --datadir data/ffhq/ffhq-lmdb \
