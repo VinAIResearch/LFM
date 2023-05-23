@@ -1,7 +1,7 @@
 # Latent Flow Matching
 
 ## Installation
-Python 3.8.5 and Pytorch 1.13.1 are used in this implementation.
+Python 3.8 and Pytorch 1.13.1 are used in this implementation.
 Please install required libraries:
 ```
 pip install -r requirements.txt
