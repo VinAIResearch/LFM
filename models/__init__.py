@@ -3,9 +3,11 @@ from .DiT import DiT_models
 from .guided_diffusion.unet import UNetModel# , UNetModelAttn
 
 def create_network(config):
+    if config.use_origin_adm:
+        return get_flow_model(config)
+
     if "DiT" not in config.model_type:
         return get_edm_network(config)
-
     return DiT_models[config.model_type](
         img_resolution=config.image_size//config.f,
         in_channels=config.num_in_channels,

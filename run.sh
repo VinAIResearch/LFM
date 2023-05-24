@@ -3,8 +3,8 @@
 #SBATCH --output=/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurms/slurm_%A.out # create a output file
 #SBATCH --error=/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurms/slurm_%A.err # create a error file
 #SBATCH --partition=research # choose partition
-#SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=12 # 80
+#SBATCH --gpus-per-node=5
+#SBATCH --cpus-per-task=32 # 80
 #SBATCH --mem-per-gpu=32GB
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -17,7 +17,7 @@
 set -x
 set -e
 
-export MASTER_PORT=10010
+export MASTER_PORT=10008
 export WORLD_SIZE=1
 
 export SLURM_JOB_NODELIST=$(scontrol show hostnames $SLURM_JOB_NODELIST | tr '\n' ' ')
@@ -75,10 +75,9 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --batch_size 128 --num_epoch 800 --label_dim 1000 \
 #     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
 #     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 3 \
-#     --lr 1e-4 --scale_factor 0.18215 \
+#     --lr 1e-5 --scale_factor 0.18215 \
 #     --save_content --save_content_every 10 \
-#     --master_port $MASTER_PORT --num_process_per_node 8 \
-
+#     --master_port $MASTER_PORT --num_process_per_node 6 \
 
 ############################################### DiT-B/2 ~ IMNET 256 ###############################################
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python train_flow_latent.py --exp laflo_imnet_f8_ditb2 \
@@ -91,7 +90,6 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --resume \
 #     --save_content --save_content_every 10 \
 #     --master_port $MASTER_PORT --num_process_per_node 8 \
-
 
 ############################################### DiT-L/2 ~ CelebA 256 ###############################################
 # CUDA_VISIBLE_DEVICES=1 python train_flow_latent.py --exp laflo_celeb_f8_dit \

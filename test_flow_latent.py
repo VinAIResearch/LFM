@@ -35,7 +35,7 @@ class NFECount(nn.Module):
         super().__init__()
         self.model = model
         self.register_buffer("nfe", torch.tensor(0.))
-    
+
     def __call__(self, t, x, *args, **kwargs):
         self.nfe += 1.
         return self.model(t, x, *args, **kwargs)
@@ -63,11 +63,11 @@ def sample_from_model(model, x_0, model_kwargs, args):
         else:
             return model(t, x_0, **model_kwargs)
 
-    fake_image = odeint(denoiser, 
-                        x_0, 
-                        t, 
-                        method=args.method, 
-                        atol = args.atol, 
+    fake_image = odeint(denoiser,
+                        x_0,
+                        t,
+                        method=args.method,
+                        atol = args.atol,
                         rtol = args.rtol,
                         adjoint_method=args.method,
                         adjoint_atol= args.atol,
@@ -107,7 +107,7 @@ def sample_and_test(rank, gpu, args):
     from diffusers.models import AutoencoderKL
     # torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_grad_enabled(False)
-    
+
     seed = args.seed + rank
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -115,7 +115,7 @@ def sample_and_test(rank, gpu, args):
 
     device = torch.device('cuda:{}'.format(gpu))
 
-    
+
     if args.dataset == 'cifar10':
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
@@ -130,7 +130,7 @@ def sample_and_test(rank, gpu, args):
         real_img_dir = 'pytorch_fid/imagenet_stat.npy'
     else:
         real_img_dir = args.real_img_dir
-    
+
     to_range_0_1 = lambda x: (x + 1.) / 2.
 
     model = create_network(args).to(device)
@@ -145,18 +145,18 @@ def sample_and_test(rank, gpu, args):
     model.eval()
 
     del ckpt
-        
+
     iters_needed = args.n_sample // args.batch_size
     save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
     if args.method in FIXER_SOLVER:
         save_dir += "_s{}".format(args.num_steps)
-    
+
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     # seed generator
-    #### seed should be aligned with rank 
+    #### seed should be aligned with rank
     #### as the same seed can cause identical generation on other gpus
     generator = get_generator(args.generator, args.n_sample, seed)
 
@@ -174,7 +174,7 @@ def sample_and_test(rank, gpu, args):
                 model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
             else:
                 model_kwargs = dict(y=y)
-        
+
         if not args.use_karras_samplers:
             fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
         else:
@@ -238,7 +238,7 @@ def sample_and_test(rank, gpu, args):
                 #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
                 #     else:
                 #         model_kwargs = dict(y=y)
-                # 
+                #
                 # if not args.use_karras_samplers:
                 #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
                 # else:
@@ -288,7 +288,7 @@ def sample_and_test(rank, gpu, args):
                 #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
                 #     else:
                 #         model_kwargs = dict(y=y)
-                # 
+                #
                 # if not args.use_karras_samplers:
                 #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
                 # else:
@@ -306,7 +306,7 @@ def sample_and_test(rank, gpu, args):
                 if rank == 0:
                     print('generating batch ', i)
                 total += global_batch_size
-        
+
         # make sure all processes have finished
         dist.barrier()
         if rank == 0:
@@ -334,7 +334,7 @@ def sample_and_test(rank, gpu, args):
             #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
             #     else:
             #         model_kwargs = dict(y=y)
-            # 
+            #
             # if not args.use_karras_samplers:
             #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
             # else:
@@ -348,7 +348,7 @@ def sample_and_test(rank, gpu, args):
         if not args.use_karras_samplers:
             save_path = './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol)
         else:
-            save_path = './samples_{}_{}_{}.jpg'.format(args.dataset, args.method, args.num_steps) 
+            save_path = './samples_{}_{}_{}.jpg'.format(args.dataset, args.method, args.num_steps)
         torchvision.utils.save_image(fake_image, save_path)
         print("Samples are save at '{}".format(save_path))
 
@@ -411,25 +411,29 @@ if __name__ == '__main__':
     parser.add_argument('--cfg_scale', type=float, default=1.,
                             help='Scale for classifier-free guidance')
 
-    # parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
-    # parser.add_argument("--resblock_updown", type=bool, default=False)
-    # parser.add_argument("--use_new_attention_order", type=bool, default=False)
+
+    # Original ADM
+    parser.add_argument('--layout', action='store_true')
+    parser.add_argument('--use_origin_adm', action='store_true')
+    parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
+    parser.add_argument("--resblock_updown", type=bool, default=False)
+    parser.add_argument("--use_new_attention_order", type=bool, default=False)
 
     parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
     parser.add_argument('--output_log', type=str, default="")
-    
+
     #######################################
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--real_img_dir', default='./pytorch_fid/cifar10_train_stat.npy', help='directory to real images for FID computation')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
     parser.add_argument('--num_steps', type=int, default=40)
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
-    
+
     # sampling argument
     parser.add_argument('--use_karras_samplers', action='store_true', default=False)
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
-    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", 
+    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3",
         "euler", "midpoint", "rk4", "heun", "multistep", "stochastic", "dpm"])
     parser.add_argument('--step_size', type=float, default=0.01, help='step_size')
     parser.add_argument('--perturb', action='store_true', default=False)
@@ -463,10 +467,10 @@ if __name__ == '__main__':
             p = Process(target=init_processes, args=(global_rank, global_size, sample_and_test, args))
             p.start()
             processes.append(p)
-            
+
         for p in processes:
             p.join()
     else:
         print('starting in debug mode')
-        
+
         init_processes(0, size, sample_and_test, args)

@@ -283,18 +283,21 @@ if __name__ == '__main__':
     parser.add_argument('--label_dropout', type=float, default=0.,
                             help='Dropout probability of class labels for classifier-free guidance')
 
-    # parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
-    # parser.add_argument("--resblock_updown", type=bool, default=False)
-    # parser.add_argument("--use_new_attention_order", type=bool, default=False)
-    # parser.add_argument('--centered', action='store_false', default=True,
-    #                         help='-1,1 scale')
-    # parser.add_argument("--resamp_with_conv", type=bool, default=True)
-    # parser.add_argument('--num_heads', type=int, default=4,
-    #                         help='number of head')
-    # parser.add_argument('--num_head_upsample', type=int, default=-1,
-    #                         help='number of head upsample')
-    # parser.add_argument('--num_head_channels', type=int, default=-1,
-    #                         help='number of head channels')
+    # Original ADM
+    parser.add_argument('--layout', action='store_true')
+    parser.add_argument('--use_origin_adm', action='store_true')
+    parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
+    parser.add_argument("--resblock_updown", type=bool, default=False)
+    parser.add_argument("--use_new_attention_order", type=bool, default=False)
+    parser.add_argument('--centered', action='store_false', default=True,
+                            help='-1,1 scale')
+    parser.add_argument("--resamp_with_conv", type=bool, default=True)
+    parser.add_argument('--num_heads', type=int, default=4,
+                            help='number of head')
+    parser.add_argument('--num_head_upsample', type=int, default=-1,
+                            help='number of head upsample')
+    parser.add_argument('--num_head_channels', type=int, default=-1,
+                            help='number of head channels')
 
     parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
 
