@@ -2,7 +2,7 @@ import os
 import time
 import subprocess
 
-import pandas as pd 
+import pandas as pd
 
 slurm_template = """#!/bin/bash -e
 #SBATCH --job-name={job_name}
@@ -20,8 +20,8 @@ slurm_template = """#!/bin/bash -e
 module purge
 module load python/miniconda3/miniconda3
 eval "$(conda shell.bash hook)"
-conda activate /lustre/scratch/client/vinai/users/hieunt91/envs/flow
-cd /lustre/scratch/client/vinai/users/hieunt91/cnf_flow
+conda activate /lustre/scratch/client/vinai/users/ngocbh8/quan/envs/flow
+cd /lustre/scratch/client/vinai/users/ngocbh8/quan/cnf_flow
 
 export MASTER_PORT={master_port}
 export WORLD_SIZE=1
@@ -53,27 +53,28 @@ CUDA_VISIBLE_DEVICES={device} torchrun --nnodes=1 --nproc_per_node={num_gpus} te
     --cfg_scale {cfg_scale} \
     # --use_karras_samplers \
 
+
 """
 
 ###### ARGS
-model_type = "adm" # or "DiT-L/2" or "adm"
+model_type = "DiT-B/2" # or "DiT-L/2" or "adm"
 dataset = "latent_imagenet_256"
-exp = "laflo_imnet_f8" # "laflo_imnet_f8"
+exp = "laflo_imnet_f8_ditb2" # "laflo_imnet_f8"
 BASE_PORT = 8015
-num_gpus = 8
+num_gpus = 2
 device = "0,1,2,3,4,5,6,7"
 
 config = pd.DataFrame({
-    "epochs": [775]*2,
-    "num_steps": [0]*2,
-    "methods": ['dopri5']*2,
-    "cfg_scale": [1, 1.5],
+    "epochs": [1000,1100,1150,1200],
+    "num_steps": [0]*4,
+    "methods": ['dopri5']*4,
+    "cfg_scale": [1.]*4,
 })
 print(config)
 
 ###################################
-slurm_file_path = f"/lustre/scratch/client/vinai/users/hieunt91/cnf_flow/slurm_scripts/{exp}/run.sh"
-slurm_output = f"/lustre/scratch/client/vinai/users/hieunt91/cnf_flow/slurm_scripts/{exp}/"
+slurm_file_path = f"/lustre/scratch/client/vinai/users/ngocbh8/quan/cnf_flow/slurm_scripts/{exp}/run.sh"
+slurm_output = f"/lustre/scratch/client/vinai/users/ngocbh8/quan/cnf_flow/slurm_scripts/{exp}/"
 output_log = f"{slurm_output}/log"
 os.makedirs(slurm_output, exist_ok=True)
 job_name = "test"
