@@ -36,7 +36,7 @@ from test_flow_latent import sample_from_model, sample_from_model2
 def main(args):
     torch.backends.cuda.matmul.allow_tf32 = True  # True: fast but may lead to some small numerical differences
     torch.set_grad_enabled(False)
-    
+
     # Setup DDP:
     dist.init_process_group("nccl")
     rank = dist.get_rank()
@@ -48,7 +48,7 @@ def main(args):
     torch.cuda.manual_seed_all(seed)
     torch.cuda.set_device(device)
     print(f"Starting rank={rank}, seed={seed}, world_size={dist.get_world_size()}.")
-    
+
     if args.dataset == 'cifar10':
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
@@ -63,7 +63,7 @@ def main(args):
         real_img_dir = 'pytorch_fid/imagenet_stat.npy'
     else:
         real_img_dir = args.real_img_dir
-    
+
     to_range_0_1 = lambda x: (x + 1.) / 2.
 
     model = create_network(args).to(device)
@@ -80,19 +80,19 @@ def main(args):
     model.eval()
 
     del ckpt
-        
+
     save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
     # save_dir = "./generated_samples/{}".format(args.dataset)
     if args.method in FIXER_SOLVER:
         save_dir += "_s{}".format(args.num_steps)
     if args.cfg_scale > 1.:
         save_dir += "_cfg{}".format(args.cfg_scale)
-    
+
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     # seed generator
-    #### seed should be aligned with rank 
+    #### seed should be aligned with rank
     generator = get_generator(args.generator, args.n_sample, seed)
 
     def run_sampling(num_samples, generator):
@@ -109,7 +109,7 @@ def main(args):
                 model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
             else:
                 model_kwargs = dict(y=y)
-        
+
         if not args.use_karras_samplers:
             fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
         else:
@@ -120,7 +120,7 @@ def main(args):
 
         fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
         return fake_image
-    
+
     print("Compute fid")
     dist.barrier()
     # Figure out how many samples we need to generate on each GPU and how many iterations we need to run:
@@ -147,7 +147,7 @@ def main(args):
             if rank == 0:
                 print('generating batch ', i)
             total += global_batch_size
-    
+
     # make sure all processes have finished
     dist.barrier()
     if rank == 0:
@@ -168,6 +168,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42,
                         help='seed used for initialization')
     parser.add_argument('--compute_fid', action='store_true', default=False,
+                            help='whether or not compute FID')
+    parser.add_argument('--use_origin_adm', action='store_true', default=False,
                             help='whether or not compute FID')
     parser.add_argument('--compute_nfe', action='store_true', default=False,
                             help='whether or not compute NFE')
@@ -225,19 +227,19 @@ if __name__ == '__main__':
 
     parser.add_argument('--pretrained_autoencoder_ckpt', type=str, default="stabilityai/sd-vae-ft-mse")
     parser.add_argument('--output_log', type=str, default="")
-    
+
     #######################################
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--real_img_dir', default='./pytorch_fid/cifar10_train_stat.npy', help='directory to real images for FID computation')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
     parser.add_argument('--num_steps', type=int, default=40)
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
-    
+
     # sampling argument
     parser.add_argument('--use_karras_samplers', action='store_true', default=False)
     parser.add_argument('--atol', type=float, default=1e-5, help='absolute tolerance error')
     parser.add_argument('--rtol', type=float, default=1e-5, help='absolute tolerance error')
-    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3", 
+    parser.add_argument('--method', type=str, default='dopri5', help='solver_method', choices=["dopri5", "dopri8", "adaptive_heun", "bosh3",
         "euler", "midpoint", "rk4", "heun", "multistep", "stochastic", "dpm"])
     parser.add_argument('--step_size', type=float, default=0.01, help='step_size')
     parser.add_argument('--perturb', action='store_true', default=False)
