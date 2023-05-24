@@ -73,7 +73,8 @@ class LabelEmbedder(nn.Module):
     def __init__(self, num_classes, hidden_size, dropout_prob):
         super().__init__()
         use_cfg_embedding = dropout_prob > 0
-        self.embedding_table = nn.Embedding(num_classes + use_cfg_embedding, hidden_size)
+        self.in_channels = num_classes + use_cfg_embedding
+        self.embedding_table = nn.Embedding(self.in_channels, hidden_size)
         self.num_classes = num_classes
         self.dropout_prob = dropout_prob
 
@@ -94,6 +95,9 @@ class LabelEmbedder(nn.Module):
             labels = self.token_drop(labels, force_drop_ids)
         embeddings = self.embedding_table(labels)
         return embeddings
+
+    def get_in_channels(self):
+        return self.in_channels
 
 
 #################################################################################
@@ -241,7 +245,7 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         if y is None:
-            y = torch.ones(x.size(0), dtype=torch.long, device=x.device) * self.num_classes
+            y = torch.ones(x.size(0), dtype=torch.long, device=x.device) * (self.y_embedder.get_in_channels() - 1)
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
