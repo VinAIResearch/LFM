@@ -11,3 +11,8 @@ __MACOSX/
 logs/
 *lmdb
 stabilityai/
+*.png
+*.jpg
+*.log
+data/
+slurm_scripts/
