@@ -27,6 +27,8 @@ from torch.multiprocessing import Process
 from datasets_prep import get_dataset
 from models import create_network
 from EMA import EMA
+from accelerate import Accelerator
+from accelerate.utils import set_seed 
 
 
 def copy_source(file, output_dir):
@@ -34,20 +36,16 @@ def copy_source(file, output_dir):
 
 
 def get_weight(model):
-    param_size = 0
-    for param in model.parameters():
-        param_size += param.nelement() * param.element_size()
-    buffer_size = 0
-    for buffer in model.buffers():
-        buffer_size += buffer.nelement() * buffer.element_size()
+    # param_size = 0
+    # for param in model.parameters():
+    #     param_size += param.nelement() * param.element_size()
+    # buffer_size = 0
+    # for buffer in model.buffers():
+    #     buffer_size += buffer.nelement() * buffer.element_size()
+    # size_all_mb = (param_size + buffer_size) / 1024**2
 
-    size_all_mb = (param_size + buffer_size) / 1024**2
+    size_all_mb = sum(p.numel() for p in model.parameters()) / 1024**2
     return size_all_mb
-
-
-def broadcast_params(params):
-    for param in params:
-        dist.broadcast(param.data, src=0)
 
 
 def sample_from_model(model, x_0):
@@ -57,27 +55,24 @@ def sample_from_model(model, x_0):
 
 
 #%%
-def train(rank, gpu, args):
+def train(args):
     from diffusers.models import AutoencoderKL
-    torch.manual_seed(args.seed + rank)
-    torch.cuda.manual_seed(args.seed + rank)
-    torch.cuda.manual_seed_all(args.seed + rank)
+    assert torch.cuda.is_available(), "Training currently requires at least one GPU."
 
-    device = torch.device('cuda:{}'.format(gpu))
-    dtype = torch.bfloat16 if args.use_bf16 else torch.float32
+    # Setup accelerator:
+    accelerator = Accelerator()
+    device = accelerator.device
+    dtype = torch.float32
+    set_seed(args.seed + accelerator.process_index)
 
     batch_size = args.batch_size
 
     dataset = get_dataset(args)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
-                                                                    num_replicas=args.world_size,
-                                                                    rank=rank)
     data_loader = torch.utils.data.DataLoader(dataset,
                                                batch_size=batch_size,
-                                               shuffle=False,
+                                               shuffle=True,
                                                num_workers=4,
                                                pin_memory=True,
-                                               sampler=train_sampler,
                                                drop_last = True)
 
     model = create_network(args).to(device, dtype=dtype)
@@ -90,10 +85,8 @@ def train(rank, gpu, args):
     for param in first_stage_model.parameters():
         param.requires_grad = False
 
-    print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
-    print('FM size: {:.3f}MB'.format(get_weight(model)))
-
-    broadcast_params(model.parameters())
+    accelerator.print('AutoKL size: {:.3f}MB'.format(get_weight(first_stage_model)))
+    accelerator.print('FM size: {:.3f}MB'.format(get_weight(model)))
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
 
@@ -102,19 +95,16 @@ def train(rank, gpu, args):
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
 
-    #ddp
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu], find_unused_parameters=False)
-
     exp = args.exp
     parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
 
     exp_path = os.path.join(parent_dir, exp)
-    if rank == 0:
+    if accelerator.is_main_process:
         if not os.path.exists(exp_path):
             os.makedirs(exp_path)
             config_dict = vars(args)
             OmegaConf.save(config_dict, os.path.join(exp_path, "config.yaml"))
-    print("Exp path:", exp_path)
+    accelerator.print("Exp path:", exp_path)
 
     if args.resume or os.path.exists(os.path.join(exp_path, 'content.pth')):
         checkpoint_file = os.path.join(exp_path, 'content.pth')
@@ -127,7 +117,7 @@ def train(rank, gpu, args):
         scheduler.load_state_dict(checkpoint['scheduler'])
         global_step = checkpoint["global_step"]
 
-        print("=> resume checkpoint (epoch {})"
+        accelerator.print("=> resume checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
         del checkpoint
 
@@ -139,16 +129,17 @@ def train(rank, gpu, args):
         model.load_state_dict(checkpoint)
         global_step = 0
 
-        print("=> loaded checkpoint (epoch {})"
+        accelerator.print("=> loaded checkpoint (epoch {})"
                   .format(epoch))
         del checkpoint
     else:
         global_step, epoch, init_epoch = 0, 0, 0
 
+    data_loader, model, optimizer, scheduler = accelerator.prepare(data_loader, model, optimizer, scheduler)
+
     use_label = True if "imagenet" in args.dataset else False
     is_latent_data = True if "latent" in args.dataset else False
     for epoch in range(init_epoch, args.num_epoch+1):
-        train_sampler.set_epoch(epoch)
 
         for iteration, (x, y) in enumerate(data_loader):
             x_0 = x.to(device, dtype=dtype, non_blocking=True)
@@ -170,17 +161,17 @@ def train(rank, gpu, args):
             # u = z_1 - (1 - 1e-5) * z_0
             v = model(t.squeeze(), v_t, y)
             loss = F.mse_loss(v, u)
-            loss.backward()
+            accelerator.backward(loss)
             optimizer.step()
             global_step += 1
             if iteration % 100 == 0:
-                if rank == 0:
-                    print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
+                if accelerator.is_main_process:
+                    accelerator.print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
 
         if not args.no_lr_decay:
             scheduler.step()
 
-        if rank == 0:
+        if accelerator.is_main_process:
             if epoch % args.plot_every == 0:
 
                 with torch.no_grad():
@@ -193,11 +184,11 @@ def train(rank, gpu, args):
                     fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
                 # torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
                 torchvision.utils.save_image(fake_image, os.path.join(exp_path, 'image_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
-                print("Finish sampling")
+                accelerator.print("Finish sampling")
 
             if args.save_content:
                 if epoch % args.save_content_every == 0:
-                    print('Saving content.')
+                    accelerator.print('Saving content.')
                     content = {'epoch': epoch + 1, 'global_step': global_step, 'args': args,
                                'model_dict': model.state_dict(), 'optimizer': optimizer.state_dict(),
                                'scheduler': scheduler.state_dict()}
@@ -211,23 +202,6 @@ def train(rank, gpu, args):
                 torch.save(model.state_dict(), os.path.join(exp_path, 'model_{}.pth'.format(epoch)))
                 if args.use_ema:
                     optimizer.swap_parameters_with_ema(store_params_in_ema=True)
-
-
-
-def init_processes(rank, size, fn, args):
-    """ Initialize the distributed environment. """
-    os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = args.master_port
-    torch.cuda.set_device(args.local_rank)
-    gpu = args.local_rank
-    dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
-    fn(rank, gpu, args)
-    dist.barrier()
-    cleanup()
-
-
-def cleanup():
-    dist.destroy_process_group()
 
 
 #%%
@@ -294,7 +268,6 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
     parser.add_argument('--datadir', default='./data')
     parser.add_argument('--num_timesteps', type=int, default=200)
-    parser.add_argument('--use_bf16', action='store_true', default=False)
     parser.add_argument('--use_grad_checkpointing', action='store_true', default=False,
         help="Enable gradient checkpointing for mem saving")
 
@@ -319,39 +292,5 @@ if __name__ == '__main__':
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
     parser.add_argument('--plot_every', type=int, default=5, help='plot every x epochs')
 
-    ###ddp
-    parser.add_argument('--num_proc_node', type=int, default=1,
-                        help='The number of nodes in multi node env.')
-    parser.add_argument('--num_process_per_node', type=int, default=1,
-                        help='number of gpus')
-    parser.add_argument('--node_rank', type=int, default=0,
-                        help='The index of node.')
-    parser.add_argument('--local_rank', type=int, default=0,
-                        help='rank of process in the node')
-    parser.add_argument('--master_address', type=str, default='127.0.0.1',
-                        help='address for master')
-    parser.add_argument('--master_port', type=str, default='6000',
-                        help='port for master')
-
     args = parser.parse_args()
-    args.world_size = args.num_proc_node * args.num_process_per_node
-    size = args.num_process_per_node
-
-    if size > 1:
-        processes = []
-        for rank in range(size):
-            args.local_rank = rank
-            global_rank = rank + args.node_rank * args.num_process_per_node
-            global_size = args.num_proc_node * args.num_process_per_node
-            args.global_rank = global_rank
-            print('Node rank %d, local proc %d, global proc %d' % (args.node_rank, rank, global_rank))
-            p = Process(target=init_processes, args=(global_rank, global_size, train, args))
-            p.start()
-            processes.append(p)
-
-        for p in processes:
-            p.join()
-    else:
-        print('starting in debug mode')
-
-        init_processes(0, size, train, args)
+    train(args)

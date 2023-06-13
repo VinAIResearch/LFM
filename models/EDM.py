@@ -12,6 +12,9 @@ import numpy as np
 import torch
 from torch.nn.functional import silu
 
+# use torch.scaled_dot_product_attention where possible
+_HAS_FUSED_ATTN = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+
 #----------------------------------------------------------------------------
 # Unified routine for initializing weights and biases.
 
@@ -131,7 +134,7 @@ class UNetBlock(torch.nn.Module):
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
         resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
-        init=dict(), init_zero=dict(init_weight=0), init_attn=None,
+        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_mem_efficient_attn=False,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -141,6 +144,7 @@ class UNetBlock(torch.nn.Module):
         self.dropout = dropout
         self.skip_scale = skip_scale
         self.adaptive_scale = adaptive_scale
+        self.use_mem_efficient_attn = use_mem_efficient_attn
 
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
         self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init)
@@ -175,8 +179,11 @@ class UNetBlock(torch.nn.Module):
 
         if self.num_heads:
             q, k, v = self.qkv(self.norm2(x)).reshape(x.shape[0] * self.num_heads, x.shape[1] // self.num_heads, 3, -1).unbind(2)
-            w = AttentionOp.apply(q, k)
-            a = torch.einsum('nqk,nck->ncq', w, v)
+            if not self.use_mem_efficient_attn or not _HAS_FUSED_ATTN:
+                w = AttentionOp.apply(q, k)
+                a = torch.einsum('nqk,nck->ncq', w, v)
+            else:
+                a = torch.nn.functional.scaled_dot_product_attention(q, k, v, dropout_p=0.)
             x = self.proj(a.reshape(*x.shape)).add_(x)
             x = x * self.skip_scale
         return x

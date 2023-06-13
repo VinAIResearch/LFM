@@ -15,7 +15,7 @@ import torch
 from torch import nn
 import torchvision
 from PIL import Image
-from torchdiffeq import odeint_adjoint as odeint
+from torchdiffeq import odeint_adjoint as ozdeint
 from diffusers.models import AutoencoderKL
 
 import torch.distributed as dist
@@ -36,7 +36,6 @@ from test_flow_latent import sample_from_model, sample_from_model2
 def main(args):
     torch.backends.cuda.matmul.allow_tf32 = True  # True: fast but may lead to some small numerical differences
     torch.set_grad_enabled(False)
-
     # Setup DDP:
     dist.init_process_group("nccl")
     rank = dist.get_rank()

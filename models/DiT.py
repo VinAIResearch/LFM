@@ -172,6 +172,7 @@ class DiT(nn.Module):
         self.patch_size = patch_size
         self.num_heads = num_heads
         self.num_classes = num_classes
+        self.enable_gradient_checkpointing = False
 
         self.x_embedder = PatchEmbed(img_resolution, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -185,6 +186,9 @@ class DiT(nn.Module):
         ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
+    
+    def set_gradient_checkpointing(self):
+        self.enable_gradient_checkpointing = True
 
     def initialize_weights(self):
         # Initialize transformer layers:
@@ -237,6 +241,12 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
+    def ckpt_wrapper(self, module):
+        def ckpt_forward(*inputs):
+            outputs = module(*inputs)
+            return outputs
+        return ckpt_forward
+
     def forward(self, t, x, y=None, **kwargs):
         """
         Forward pass of DiT.
@@ -251,8 +261,11 @@ class DiT(nn.Module):
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
         for block in self.blocks:
-            x = block(x, c)                      # (N, T, D)
-        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+            if not self.enable_gradient_checkpointing:
+                x = block(x, c)                  # (N, T, D)
+            else:
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, c)
+        x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
