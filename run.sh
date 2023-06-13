@@ -35,6 +35,7 @@ export PYTHONFAULTHANDLER=1
 
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
+############################################### ADM ~ CelebA 256 ###############################################
 # CUDA_VISIBLE_DEVICES=1 python train_flow_latent.py --exp laflo_celeba_f8_lr2e-5_bs32 \
 #     --dataset celeba_256 --datadir data/celeba/celeba-lmdb \
 #     --batch_size 32 --num_epoch 500 \
@@ -44,6 +45,8 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --save_content --save_content_every 10 \
 #     --master_port $MASTER_PORT
 
+
+############################################### ADM ~ FFHQ 256 ###############################################
 # CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_f8_lr2e-5 \
 #     --dataset ffhq_256 --datadir data/ffhq/ffhq-lmdb \
 #     --batch_size 128 --num_epoch 500 \
@@ -53,15 +56,8 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --save_content_every 10 \
 #     --master_port $MASTER_PORT
 
-# CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_bed_f8 \
-#     --dataset lsun_bedroom --datadir data/lsun/ \
-#     --batch_size 128 --num_epoch 500 \
-#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-#     --lr 2e-5 --scale_factor 0.18215 \
-#     --save_content_every 10 \
-#     --master_port $MASTER_PORT
 
+############################################### ADM ~ Bed 256 ###############################################
 # python train_flow_latent.py --exp laflo_bed_f8_lr5e-5 \
 #     --dataset lsun_bedroom --datadir data/lsun/ \
 #     --batch_size 128 --num_epoch 800 \
@@ -72,6 +68,8 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --model_ckpt model_500.pth \
 #     --master_port $MASTER_PORT --num_process_per_node 1 \
 
+
+############################################### ADM ~ IMNET 256 ###############################################
 # python train_flow_latent.py --exp laflo_imnet_f8_pixel \
 #     --dataset imagenet_256 --datadir ./data/imagenet/ --num_classes 1000 \
 #     --batch_size 96 --num_epoch 1800 --label_dim 1000 \
@@ -81,6 +79,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --save_content --save_content_every 10 \
 #     --master_port $MASTER_PORT --num_process_per_node 8 --resume \
 
+############################################### DiT-B/2 ~ IMNET 256 ###############################################
 # python train_flow_latent.py --exp laflo_imnet_f8_ditb2 \
 #     --dataset imagenet_256 --datadir ./data/imagenet/ \
 #     --batch_size 144 --num_epoch 1800 --label_dim 1000 \
@@ -102,6 +101,8 @@ accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flo
     --save_content --save_content_every 10 \
     --use_grad_checkpointing \
 
+
+############################################### DiT-L/2 ~ CelebA 256 ###############################################
 # CUDA_VISIBLE_DEVICES=1 python train_flow_latent.py --exp laflo_celeb_f8_dit \
 #     --dataset celeba_256 --datadir data/celeba/celeba-lmdb \
 #     --batch_size 32 --num_epoch 800 \
@@ -114,17 +115,20 @@ accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flo
 #     --master_port $MASTER_PORT
 
 
-# python train_flow_latent.py --exp laflo_celeb_f8_ditl4 \
-#     --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
-#     --batch_size 32 --num_epoch 500 \
-#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-#     --lr 2e-4 --scale_factor 0.18215 --no_lr_decay \
-#     --model_type DiT-L/4 --num_classes 1 --label_dropout 0. \
-#     --save_content --save_content_every 10 \
-#     --master_port $MASTER_PORT \
-#     # --model_ckpt model_500.pth \
+############################################### DiT-L/4 ~ CelebA 1024 ###############################################
+python train_flow_latent.py --exp laflo_celeb_f8_ditl4 \
+    --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
+    --batch_size 32 --num_epoch 500 \
+    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+    --lr 2e-4 --scale_factor 0.18215 --no_lr_decay \
+    --model_type DiT-L/4 --num_classes 1 --label_dropout 0. \
+    --save_content --save_content_every 10 \
+    --master_port $MASTER_PORT \
+    # --model_ckpt model_500.pth \
 
+
+############################################### DiT-L/2 ~ FFHQ 256 ###############################################
 # CUDA_VISIBLE_DEVICES=0 python train_flow_latent.py --exp laflo_ffhq_f8_dit \
 #     --dataset ffhq_256 --datadir data/ffhq/ffhq-lmdb \
 #     --batch_size 32 --num_epoch 500 \
@@ -135,6 +139,7 @@ accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flo
 #     --save_content_every 10 \
 #     --master_port $MASTER_PORT
 
+############################################### DiT-L/2 ~ BED 256 ###############################################
 # python train_flow_latent.py --exp laflo_bed_f8_dit \
 #     --dataset lsun_bedroom --datadir data/lsun/ \
 #     --batch_size 32 --num_epoch 800 \
@@ -148,6 +153,8 @@ accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flo
 #     --master_port $MASTER_PORT --num_process_per_node 1 \
 #     # --model_ckpt model_300.pth \
 
+
+############################################### DiT-L/2 ~ Church 256 ###############################################
 # python train_flow_latent.py --exp laflo_church_f8_dit \
 #     --dataset lsun_church --datadir data/lsun/ \
 #     --batch_size 48 --num_epoch 800 \
