@@ -11,6 +11,8 @@ import argparse
 from functools import partial
 from omegaconf import OmegaConf
 
+from time import time
+
 import numpy as np
 import torch
 # faster training
@@ -95,6 +97,8 @@ def train(args):
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
 
+    data_loader, model, optimizer, scheduler = accelerator.prepare(data_loader, model, optimizer, scheduler)
+
     exp = args.exp
     parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
 
@@ -135,10 +139,11 @@ def train(args):
     else:
         global_step, epoch, init_epoch = 0, 0, 0
 
-    data_loader, model, optimizer, scheduler = accelerator.prepare(data_loader, model, optimizer, scheduler)
 
     use_label = True if "imagenet" in args.dataset else False
     is_latent_data = True if "latent" in args.dataset else False
+    log_steps = 0
+    start_time = time()
     for epoch in range(init_epoch, args.num_epoch+1):
 
         for iteration, (x, y) in enumerate(data_loader):
@@ -164,9 +169,16 @@ def train(args):
             accelerator.backward(loss)
             optimizer.step()
             global_step += 1
+            log_steps += 1
             if iteration % 100 == 0:
                 if accelerator.is_main_process:
-                    accelerator.print('epoch {} iteration{}, Loss: {}'.format(epoch,iteration, loss.item()))
+                    # Measure training speed:
+                    end_time = time()
+                    steps_per_sec = log_steps / (end_time - start_time)
+                    accelerator.print('epoch {} iteration{}, Loss: {}, Train Steps/Sec: {:.2f}'.format(epoch, iteration, loss.item(), steps_per_sec))
+                    # Reset monitoring variables:
+                    log_steps = 0
+                    start_time = time()
 
         if not args.no_lr_decay:
             scheduler.step()

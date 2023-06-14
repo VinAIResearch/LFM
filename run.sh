@@ -116,16 +116,16 @@ accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flo
 
 
 ############################################### DiT-L/4 ~ CelebA 1024 ###############################################
-python train_flow_latent.py --exp laflo_celeb_f8_ditl4 \
-    --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
-    --batch_size 32 --num_epoch 500 \
-    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-    --lr 2e-4 --scale_factor 0.18215 --no_lr_decay \
-    --model_type DiT-L/4 --num_classes 1 --label_dropout 0. \
-    --save_content --save_content_every 10 \
-    --master_port $MASTER_PORT \
-    # --model_ckpt model_500.pth \
+# python train_flow_latent.py --exp laflo_celeb_f8_ditl4 \
+#     --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
+#     --batch_size 32 --num_epoch 500 \
+#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#     --lr 2e-4 --scale_factor 0.18215 --no_lr_decay \
+#     --model_type DiT-L/4 --num_classes 1 --label_dropout 0. \
+#     --save_content --save_content_every 10 \
+#     --master_port $MASTER_PORT \
+#     # --model_ckpt model_500.pth \
 
 
 ############################################### DiT-L/2 ~ FFHQ 256 ###############################################
