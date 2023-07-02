@@ -5,7 +5,7 @@ def classifier_defaults():
     Defaults for classifier models.
     """
     return dict(
-        image_size=64,
+        classifier_image_size=32,
         classifier_use_fp16=False,
         classifier_width=128,
         classifier_depth=2,
@@ -16,7 +16,7 @@ def classifier_defaults():
     )
 
 def create_classifier(
-    image_size,
+    classifier_image_size,
     classifier_width,
     classifier_depth,
     classifier_attention_resolutions,
@@ -25,26 +25,27 @@ def create_classifier(
     classifier_resblock_updown,
     classifier_pool,
 ):
-    if image_size == 512:
+    if classifier_image_size == 512:
         channel_mult = (0.5, 1, 1, 2, 2, 4, 4)
-    elif image_size == 256:
+    elif classifier_image_size == 256:
         channel_mult = (1, 1, 2, 2, 4, 4)
-    elif image_size == 128:
+    elif classifier_image_size == 128:
         channel_mult = (1, 1, 2, 3, 4)
-    elif image_size == 64:
+    elif classifier_image_size == 64:
         channel_mult = (1, 2, 3, 4)
-    elif image_size == 32:
+    elif classifier_image_size == 32:
         channel_mult = (1, 2, 2, 2)
-        out_channel = 1000
     else:
         raise ValueError(f"unsupported image size: {image_size}")
 
+    out_channel = 1000
+
     attention_ds = []
     for res in classifier_attention_resolutions.split(","):
-        attention_ds.append(image_size // int(res))
+        attention_ds.append(classifier_image_size // int(res))
 
     return EncoderUNetModel(
-        image_size=image_size,
+        image_size=classifier_image_size,
         in_channels=4,
         model_channels=classifier_width,
         out_channels=out_channel,

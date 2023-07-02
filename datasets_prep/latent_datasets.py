@@ -3,6 +3,7 @@ import lmdb
 import os
 import io
 
+from glob import glob
 import torch
 import torch.utils.data as data
 
@@ -12,20 +13,20 @@ class LatentDataset(data.Dataset):
         self.train = train
         self.transform = transform
         if self.train:
-            latent_path = os.path.join(root, 'train.pkl')
+            latent_paths = glob(f'{root}/train/*.npy')
         else:
-            latent_path = os.path.join(root, 'val.pkl')
-        self.data = torch.load(latent_path)
+            latent_paths = glob(f'{root}/val/*.npy')
+        self.data = latent_paths
 
     def __getitem__(self, index):
-        target = self.data["target"][index]
-        mean, std = self.data["mean"][index], self.data["std"][index]
-        x = mean + torch.randn_like(mean) * std
-        
+        sample = np.load(self.data[index]).item()
+        target = torch.from_numpy(sample["label"])
+        x = torch.from_numpy(sample["input"])
+
         if self.transform is not None:
             x = self.transform(x)
 
         return x, target
 
     def __len__(self):
-        return len(self.data["target"])
+        return len(self.data)

@@ -13,3 +13,8 @@ logs/
 stabilityai/
 *generated*
 celeba_test/
+*.png
+*.jpg
+*.log
+data/
+slurm_scripts/
