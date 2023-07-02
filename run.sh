@@ -91,15 +91,18 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     --master_port $MASTER_PORT --num_process_per_node 8 \
 #     --use_bf16 --use_grad_checkpointing \
 
-accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flow_latent_faster.py --exp laflo_imnet_f8_ditb2 \
-    --dataset imagenet_256 --datadir ./data/imagenet/ \
-    --batch_size 160 --num_epoch 1800 --label_dim 1000 \
-    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-    --lr 1e-4 --scale_factor 0.18215 --no_lr_decay \
-    --model_type DiT-B/2 --num_classes 1000 --label_dropout 0.1 \
-    --save_content --save_content_every 10 \
-    --use_grad_checkpointing \
+# --mixed_precision bf16
+# accelerate launch --multi_gpu --num_processes 8 train_flow_latent_faster.py --exp laflo_imnet_f8_ditl2 \
+#     --dataset imagenet_256 --datadir ./data/imagenet/ \
+#     --batch_size 48 --num_epoch 1800 --label_dim 1000 \
+#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#     --lr 1e-4 --scale_factor 0.18215 --no_lr_decay \
+#     --model_type DiT-L/2 --num_classes 1000 --label_dropout 0.1 \
+#     --save_content --save_content_every 5 \
+#     --use_grad_checkpointing \
+#     # --resume \
+#     # --model_ckpt model_600.pth \
 
 
 ############################################### DiT-L/2 ~ CelebA 256 ###############################################
@@ -115,17 +118,17 @@ accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flo
 #     --master_port $MASTER_PORT
 
 
-############################################### DiT-L/4 ~ CelebA 1024 ###############################################
-# python train_flow_latent.py --exp laflo_celeb_f8_ditl4 \
-#     --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
-#     --batch_size 32 --num_epoch 500 \
-#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-#     --lr 2e-4 --scale_factor 0.18215 --no_lr_decay \
-#     --model_type DiT-L/4 --num_classes 1 --label_dropout 0. \
-#     --save_content --save_content_every 10 \
-#     --master_port $MASTER_PORT \
-#     # --model_ckpt model_500.pth \
+############################################### ADM ~ CelebA 1024 ###############################################
+accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flow_latent_faster.py \
+    --exp laflo_celeb1024_f8 \
+    --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
+    --batch_size 6 --num_epoch 500 \
+    --image_size 1024 --f 8 --num_in_channels 4 --num_out_channels 4 \
+    --nf 256 --ch_mult 1 1 2 2 4 4 --attn_resolution 16 8 --num_res_blocks 2 \
+    --lr 2e-5 --scale_factor 0.18215 --no_lr_decay \
+    --save_content --save_content_every 10 \
+    --resume \
+    # --model_type DiT-L/4 --num_classes 1 --label_dropout 0. \
 
 
 ############################################### DiT-L/2 ~ FFHQ 256 ###############################################
