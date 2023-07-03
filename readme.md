@@ -13,6 +13,22 @@ pip install -r requirements.txt
 
 All training scripts are wrapped in [run.sh](run.sh). Simply comment/uncomment the relevant commands and run `bash run.sh`.
 
+For downstream tasks as image inpaiting and semantic synthesis, we use the below commands.
+
+**Image inpaiting**
+
+```
+python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 500 --image_size 256 --num_in_channels 9 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 --num_process_per_node 2 --save_content
+```
+
+**Semantic Synthesis**
+
+```
+python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 --num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 --num_process_per_node 2 --save_content
+```
+
+
+
 ## Testing
 
 Please modify some arguments in [run_test.sh](run_test.sh) for corresponding experiments and then run `bash run_test.sh`.
