@@ -44,6 +44,18 @@ STEPS=0
 USE_ORIGIN_ADM=False
 ```
 
+**Image Inpainting**
+```
+python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
+```
+
+**Semantic Synthesis**
+
+```
+python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
+```
+
+
 Detailed arguments and checkpoints are provided below:
 
 <table>
