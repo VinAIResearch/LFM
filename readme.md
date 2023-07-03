@@ -44,13 +44,14 @@ STEPS=0
 USE_ORIGIN_ADM=False
 ```
 
+For downstream tasks, we firstly run `test_flow_latent_semantic_syn.py` and `test_flow_latent_inpainting.py` to generate the synthesis data based on given conditions. After that, we can evaluate the metric using below commands.
+
 **Image Inpainting**
 ```
 python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
 ```
 
 **Semantic Synthesis**
-
 ```
 python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
 ```
