@@ -7,7 +7,7 @@
 6. [Acknowledgments](#Acknowledgments)
 7. [Contacts](#Contacts)
 
-# Official PyTorch implementation of "Flow Matching in Latent Space")
+# Official PyTorch implementation of "Flow Matching in Latent Space"
 <div align="center">
   <a href="https://quandao10.github.io/" target="_blank">Quan&nbsp;Dao</a> &emsp; <b>&middot;</b> &emsp;
   <a href="https://hao-pt.github.io/" target="_blank">Hao&nbsp;Phung</a> &emsp; <b>&middot;</b> &emsp;
