@@ -5,7 +5,6 @@ echo "$(cat $1)"
 export MASTER_PORT=12004
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-CFG=1.5
 
 python test_flow_latent.py --exp ${EXP} \
     --dataset ${DATASET} --batch_size 27 --epoch_id ${EPOCH_ID} \

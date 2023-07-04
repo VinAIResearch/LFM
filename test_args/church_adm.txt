@@ -5,3 +5,6 @@ EXP=church_f8_adm
 METHOD=dopri5
 STEPS=0
 USE_ORIGIN_ADM=True
+IMG_SIZE=256
+CH_MULT="1 2 3 4"
+ATTN_RES="16 8"

@@ -5,3 +5,4 @@ EXP=bed_f8_dit
 METHOD=dopri5
 STEPS=0
 USE_ORIGIN_ADM=False
+IMG_SIZE=256

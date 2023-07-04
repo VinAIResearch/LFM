@@ -55,57 +55,19 @@ pip install -r requirements.txt
 
 ## Dataset preparation
 
-### Image generation
-
 For CelebA HQ 256, FFHQ 256 and LSUN, please check [NVAE's instructions](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) out.
 
 For higher resolution datasets (CelebA HQ 512 & 1024), please refer to [WaveDiff's documents](https://github.com/VinAIResearch/WaveDiff.git).
 
 For ImageNet dataset, please download it directly from [the official website](https://www.image-net.org/download.php).
 
-### Downstream tasks
-
-ToDo
-
 ## Training
 
-### Image generation
-
-All training scripts are wrapped in [run.sh](scripts/run.sh). Simply comment/uncomment the relevant commands and run `bash run.sh`.
-
-### Downstream tasks
-
-For downstream tasks as image inpaiting and semantic synthesis, we use the below commands.
-
-<details>
-<summary>Image inpainting</summary>
-
-```
-python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 \
-  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 500 --image_size 256 \
-  --num_in_channels 9 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
-  --num_process_per_node 2 --save_content
-```
-
-</details>
-
-<details>
-<summary>Semantic Synthesis</summary>
-
-```
-python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256 \
-  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 \
-  --num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
-  --num_process_per_node 2 --save_content
-```
-
-</details>
+All training scripts are wrapped in [run.sh](bash_scripts/run.sh). Simply comment/uncomment the relevant commands and run `bash run.sh`.
 
 ## Testing
 
-### Image generation
-
-**Sampling**
+### Sampling
 
 Run `run_test.sh`/`run_test_cls.sh` with corresponding argument's file.
 
@@ -127,6 +89,7 @@ EXP=celeb_f8_dit
 METHOD=dopri5
 STEPS=0
 USE_ORIGIN_ADM=False
+IMG_SIZE=256
 ```
 
 </details>
@@ -239,9 +202,11 @@ STEPS=50
 
 </details>
 
-**Evaluation**
+### Evaluation
 
-To evaluate FID scores, please download pre-computed stats from [here](https://drive.google.com/drive/folders/1BXCqPUD36HSdrOHj2Gu_vFKA3M3hJspI?usp=share_link) and put it to `pytorch_fid`. Then run `bash run_test_ddp.sh` for unconditional generation and `bash run_test_cls_ddp.sh`. By default, multi-gpu sampling is supported for faster compute.
+To evaluate FID scores, please download pre-computed stats from [here](https://drive.google.com/drive/folders/1BXCqPUD36HSdrOHj2Gu_vFKA3M3hJspI?usp=share_link) and put it to `pytorch_fid`.
+
+Then run `bash run_test_ddp.sh` for unconditional generation and `bash run_test_cls_ddp.sh`. By default, multi-gpu sampling is supported for faster compute.
 
 <details>
 <summary>Computing stats for new dataset</summary>
@@ -256,25 +221,9 @@ python compute_dataset_stat.py \
 
 </details>
 
-### Downstream tasks
-
-For downstream tasks, we firstly run `test_flow_latent_semantic_syn.py` and `test_flow_latent_inpainting.py` to generate the synthesis data based on given conditions. After that, we can evaluate the metric using below commands.
-
-**Image Inpainting**
-
-```
-python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
-```
-
-**Semantic Synthesis**
-
-```
-python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
-```
-
 ## Acknowledgments
 
-Our codes are accumulated from different sources: [EDM](https://github.com/NVlabs/edm), [DiT](https://github.com/facebookresearch/DiT.git), [ADM](https://github.com/openai/guided-diffusion), [CD](https://github.com/openai/consistency_models.git), [Flow Matching in 100 LOC by François Rozet](https://gist.github.com/fd6a820e052157f8ac6e2aa39e16c1aa.git) and [WaveDiff](https://github.com/VinAIResearch/WaveDiff). We greatly appreciate these publicly available resources for research and development.
+Our codes are accumulated from different sources: [EDM](https://github.com/NVlabs/edm), [DiT](https://github.com/facebookresearch/DiT.git), [ADM](https://github.com/openai/guided-diffusion), [CD](https://github.com/openai/consistency_models.git), [Flow Matching in 100 LOC by François Rozet](https://gist.github.com/fd6a820e052157f8ac6e2aa39e16c1aa.git), and [WaveDiff](https://github.com/VinAIResearch/WaveDiff). We greatly appreciate these publicly available resources for research and development.
 
 ## Contacts
 
