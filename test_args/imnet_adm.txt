@@ -1,0 +1,7 @@
+MODEL_TYPE=adm
+EPOCH_ID=1125
+DATASET=imagenet_256
+EXP=imnet_f8_adm
+METHOD=dopri5
+STEPS=0
+CFG=1.25

@@ -1,13 +1,9 @@
+echo "Argument file: $1";
+source $1
+echo "$(cat $1)"
+
 export MASTER_PORT=12004
 export PYTHONPATH=$(pwd):$PYTHONPATH
-
-MODEL_TYPE=adm
-EPOCH_ID=425
-DATASET=lsun_bedroom
-EXP=laflo_bed_f8_lr5e-5
-METHOD=dopri5
-STEPS=0
-USE_ORIGIN_ADM=False
 
 if [[ ${USE_ORIGIN_ADM} == True ]]; then
     python test_flow_latent.py --exp ${EXP} \

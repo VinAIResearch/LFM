@@ -24,7 +24,7 @@
 </div>
 <br>
 <div align="center">
-    <img width="1000" alt="teaser" src="assets/archi.png"/>
+  <img width="1000" alt="teaser" src="assets/archi.svg"/>
 </div>
 
 > Abstract: Flow matching is a recent framework to train generative models that exhibits impressive empirical performance while being relatively easier to train compared with diffusion-based models.
@@ -43,8 +43,6 @@ Details of the model architecture and experimental results can be found in [our 
 ```
 
 **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
-
-# Latent Flow Matching
 
 ## Installation
 
@@ -93,12 +91,14 @@ python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 
 
 <details>
 <summary>Semantic Synthesis</summary>
+
 ```
-python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256  \
---batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 \
---num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
---num_process_per_node 2 --save_content
+python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256 \
+  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 \
+  --num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
+  --num_process_per_node 2 --save_content
 ```
+
 </details>
 
 ## Testing
@@ -107,13 +107,17 @@ python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256 
 
 **Sampling**
 
-Please modify some arguments in [run_test.sh](scripts/run_test.sh) / [run_test_cls.sh](scripts/run_test_cls.sh) for corresponding experiments and then run `bash run_test.sh`/`run_test_cls.sh`.
+Run `run_test.sh`/`run_test_cls.sh` with corresponding argument's file.
+
+```
+bash run_test.sh <path_to_arg_file>
+```
 
 > Only 1 gpu is required.
 
 <details>
 
-<summary>These arguments are specifies as follows:</summary>
+<summary>These arguments are specified as follows:</summary>
 
 ```bash
 MODEL_TYPE=DiT-L/2
@@ -127,7 +131,7 @@ USE_ORIGIN_ADM=False
 
 </details>
 
-Detailed arguments and checkpoints are provided below:
+Argument's files and checkpoints are provided below:
 
 <table>
   <tr>
@@ -157,12 +161,18 @@ Detailed arguments and checkpoints are provided below:
     <td>4.92</td>
     <td><a href="https://drive.google.com/drive/folders/1o1uDrTAPIENHRh56CdVdGiEHGNqKcaC8?usp=share_link">model_550.pth</a></td>
   </tr>
-
   <tr>
     <td> church_f8_dit </td>
     <td><a href="test_args/church_dit.txt"> test_args/church_dit.txt</a></td>
     <td>5.54</td>
     <td><a href="https://drive.google.com/drive/folders/15ONlqM2eNbA91j7BikWPQG_6RH80NUwz?usp=share_link">model_575.pth</a></td>
+  </tr>
+
+  <tr>
+    <td> imnet_f8_dit </td>
+    <td><a href="test_args/imnet_dit.txt"> test_args/imnet_dit.txt</a></td>
+    <td>4.46</td>
+    <td>---</td>
   </tr>
 
   <tr>
@@ -200,6 +210,12 @@ Detailed arguments and checkpoints are provided below:
     <td>---</td>
 
   </tr>
+  <tr>
+    <td> imnet_f8_adm </td>
+    <td><a href="test_args/imnet_adm.txt"> test_args/imnet_adm.txt</a></td>
+    <td>8.58</td>
+    <td>---</td>
+  </tr>
 
 </table>
 
@@ -209,11 +225,12 @@ Please put downloaded pre-trained models in `saved_info/latent_flow/<DATASET>/<E
 
 <details>
 <summary>Utilities</summary>
-To measure time, please add `--measure_time` in bash command.
 
-To compute the number of function evaluations of adaptive solver (default: `dopri5`), please add `--compute_nfe` in bash command.
+To measure time, please add `--measure_time` in the script.
 
-To use fixed-steps solver (e.g. `euler` and `heun`), please add `--use_karras_samplers` and change these two arguments as follow:
+To compute the number of function evaluations of adaptive solver (default: `dopri5`), please add `--compute_nfe` in the script.
+
+To use fixed-steps solver (e.g. `euler` and `heun`), please add `--use_karras_samplers` and change two arguments as follow:
 
 ```
 METHOD=heun
