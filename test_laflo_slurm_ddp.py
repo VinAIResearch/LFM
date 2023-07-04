@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 
+import numpy as np
 import pandas as pd
 
 slurm_template = """#!/bin/bash -e
@@ -41,34 +42,46 @@ echo "----------------------------"
 echo $MODEL_TYPE $EPOCH_ID $DATASET $EXP {method} {num_steps}
 echo "----------------------------"
 
-CUDA_VISIBLE_DEVICES={device} torchrun --nnodes=1 --nproc_per_node={num_gpus} test_flow_latent_ddp.py --exp $EXP \
-    --dataset $DATASET --batch_size 50 --epoch_id $EPOCH_ID \
-    --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 3 \
+# CUDA_VISIBLE_DEVICES={device} torchrun --nnodes=1 --nproc_per_node={num_gpus} test_flow_latent_ddp.py --exp $EXP \
+#     --dataset $DATASET --batch_size 50 --epoch_id $EPOCH_ID \
+#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
+#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#     --model_type $MODEL_TYPE \
+#     --num_classes 1000 --label_dim 1000 --label_dropout 0.1 \
+#     --method {method} --num_steps {num_steps} \
+#     --compute_fid --output_log $OUTPUT_LOG \
+#     --master_port $MASTER_PORT --num_process_per_node {num_gpus} \
+#     --cfg_scale {cfg_scale} \
+#     # --use_karras_samplers \
+
+CUDA_VISIBLE_DEVICES={device} torchrun --nnodes=1 --nproc_per_node={num_gpus} test_flow_latent.py --exp $EXP \
+    --dataset $DATASET --batch_size 100 --epoch_id $EPOCH_ID \
+    --image_size 1024 --f 8 --num_in_channels 4 --num_out_channels 4 \
+    --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 --num_res_blocks 2 \
     --model_type $MODEL_TYPE \
-    --num_classes 1000 --label_dim 1000 --label_dropout 0.1 \
     --method {method} --num_steps {num_steps} \
     --compute_fid --output_log $OUTPUT_LOG \
-    --master_port $MASTER_PORT --num_process_per_node {num_gpus} \
-    --cfg_scale {cfg_scale} \
+    --master_port $MASTER_PORT  --num_process_per_node {num_gpus} \
+    --num_classes 1 --label_dropout 0. \
     # --use_karras_samplers \
+    # --use_origin_adm \
 
 
 """
 
 ###### ARGS
-model_type = "DiT-B/2" # or "DiT-L/2" or "adm"
-dataset = "latent_imagenet_256"
-exp = "laflo_imnet_f8_ditb2" # "laflo_imnet_f8"
+model_type = "DiT-L/4" # or "DiT-L/2" or "adm"
+dataset = "celeba_1024"
+exp = "laflo_celeb_f8_ditl4" # "laflo_imnet_f8"
 BASE_PORT = 8015
-num_gpus = 2
+num_gpus = 8
 device = "0,1,2,3,4,5,6,7"
 
 config = pd.DataFrame({
-    "epochs": [1000,1100,1150,1200],
-    "num_steps": [0]*4,
-    "methods": ['dopri5']*4,
-    "cfg_scale": [1.]*4,
+    "epochs": [600, 625, 650, 675, 750, 900, 975, 1000, 1200, 1325],
+    "num_steps": [0]*10,
+    "methods": ['dopri5']*10,
+    "cfg_scale": [1.]*10,
 })
 print(config)
 

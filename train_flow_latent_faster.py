@@ -30,7 +30,7 @@ from datasets_prep import get_dataset
 from models import create_network
 from EMA import EMA
 from accelerate import Accelerator
-from accelerate.utils import set_seed 
+from accelerate.utils import set_seed
 
 
 def copy_source(file, output_dir):
@@ -190,7 +190,7 @@ def train(args):
                     rand = torch.randn_like(z_0)[:4]
                     if y is not None:
                         y = y[:4]
-                    sample_model = partial(model, y=y)
+                    sample_model = partial(model.module, y=y)
                     # sample_func = lambda t, x: model(t, x, y=y)
                     fake_sample = sample_from_model(sample_model, rand)[-1]
                     fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
