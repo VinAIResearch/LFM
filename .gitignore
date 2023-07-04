@@ -1,5 +1,6 @@
 .DS_Store
 __pycache__/
+.vscode/
 saved_info/
 dataset/
 improved_diffusion.egg-info/

@@ -24,7 +24,7 @@
 </div>
 <br>
 <div align="center">
-    <img width="1000" alt="teaser" src="assets/single_wavelet.png"/>
+    <img width="1000" alt="teaser" src="assets/archi.png"/>
 </div>
 
 > Abstract: Flow matching is a recent framework to train generative models that exhibits impressive empirical performance while being relatively easier to train compared with diffusion-based models.
@@ -73,13 +73,14 @@ ToDo
 
 ### Image generation
 
-All training scripts are wrapped in [run.sh](run.sh). Simply comment/uncomment the relevant commands and run `bash run.sh`.
+All training scripts are wrapped in [run.sh](scripts/run.sh). Simply comment/uncomment the relevant commands and run `bash run.sh`.
 
 ### Downstream tasks
 
 For downstream tasks as image inpaiting and semantic synthesis, we use the below commands.
 
-**Image inpaiting**
+<details>
+<summary>Image inpainting</summary>
 
 ```
 python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 \
@@ -88,21 +89,31 @@ python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 
   --num_process_per_node 2 --save_content
 ```
 
-**Semantic Synthesis**
+</details>
 
+<details>
+<summary>Semantic Synthesis</summary>
 ```
 python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256  \
 --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 \
 --num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
 --num_process_per_node 2 --save_content
 ```
+</details>
 
 ## Testing
 
 ### Image generation
 
-Please modify some arguments in [run_test.sh](run_test.sh) for corresponding experiments and then run `bash run_test.sh`.
-These arguments are specifies as follows:
+**Sampling**
+
+Please modify some arguments in [run_test.sh](scripts/run_test.sh) / [run_test_cls.sh](scripts/run_test_cls.sh) for corresponding experiments and then run `bash run_test.sh`/`run_test_cls.sh`.
+
+> Only 1 gpu is required.
+
+<details>
+
+<summary>These arguments are specifies as follows:</summary>
 
 ```bash
 MODEL_TYPE=DiT-L/2
@@ -113,6 +124,8 @@ METHOD=dopri5
 STEPS=0
 USE_ORIGIN_ADM=False
 ```
+
+</details>
 
 Detailed arguments and checkpoints are provided below:
 
@@ -194,7 +207,37 @@ Detailed arguments and checkpoints are provided below:
 
 Please put downloaded pre-trained models in `saved_info/latent_flow/<DATASET>/<EXP>` directory where `<DATASET>` is defined as in [run.sh](run.sh).
 
-To evaluate FID scores, please download pre-computed stats from [here](https://drive.google.com/drive/folders/1BXCqPUD36HSdrOHj2Gu_vFKA3M3hJspI?usp=share_link) and put it to `pytorch_fid`.
+<details>
+<summary>Utilities</summary>
+To measure time, please add `--measure_time` in bash command.
+
+To compute the number of function evaluations of adaptive solver (default: `dopri5`), please add `--compute_nfe` in bash command.
+
+To use fixed-steps solver (e.g. `euler` and `heun`), please add `--use_karras_samplers` and change these two arguments as follow:
+
+```
+METHOD=heun
+STEPS=50
+```
+
+</details>
+
+**Evaluation**
+
+To evaluate FID scores, please download pre-computed stats from [here](https://drive.google.com/drive/folders/1BXCqPUD36HSdrOHj2Gu_vFKA3M3hJspI?usp=share_link) and put it to `pytorch_fid`. Then run `bash run_test_ddp.sh` for unconditional generation and `bash run_test_cls_ddp.sh`. By default, multi-gpu sampling is supported for faster compute.
+
+<details>
+<summary>Computing stats for new dataset</summary>
+
+`compute_dataset_stat.py` is provided for this purpose.
+
+```bash
+python compute_dataset_stat.py \
+  --dataset <dataset> --datadir <path_to_data> \
+  --image_size <image_size> --save_path <path_to_save>
+```
+
+</details>
 
 ### Downstream tasks
 
