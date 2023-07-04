@@ -206,7 +206,7 @@ STEPS=50
 
 To evaluate FID scores, please download pre-computed stats from [here](https://drive.google.com/drive/folders/1BXCqPUD36HSdrOHj2Gu_vFKA3M3hJspI?usp=share_link) and put it to `pytorch_fid`.
 
-Then run `bash run_test_ddp.sh` for unconditional generation and `bash run_test_cls_ddp.sh`. By default, multi-gpu sampling is supported for faster compute.
+Then run `bash run_test_ddp.sh` for unconditional generation and `bash run_test_cls_ddp.sh` for conditional generation. By default, multi-gpu sampling with 8 GPUs is supported for faster compute.
 
 <details>
 <summary>Computing stats for new dataset</summary>
