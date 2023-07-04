@@ -43,7 +43,7 @@ METHOD=dopri5
 STEPS=0
 USE_ORIGIN_ADM=False
 
-if [[ ${USE_ORIGIN_ADM} == train ]]; then
+if [[ ${USE_ORIGIN_ADM} == True ]]; then
     python test_flow_latent.py --exp ${EXP} \
         --dataset ${DATASET} --batch_size 100 --epoch_id ${EPOCH_ID} \
         --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
@@ -51,7 +51,7 @@ if [[ ${USE_ORIGIN_ADM} == train ]]; then
         --use_origin_adm \
         --master_port $MASTER_PORT --num_process_per_node 1 \
         --compute_fid --output_log ${EXP}_${EPOCH_ID}_${METHOD}${STEPS}.log \
-        --method dopri5 --num_steps 0 \
+        --method ${METHOD} --num_steps 0 \
         # --measure_time \
         # --use_karras_samplers \
         # --method heun --step_size 50 \
