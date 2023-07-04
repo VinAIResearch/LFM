@@ -1,0 +1,7 @@
+MODEL_TYPE=DiT-L/2
+EPOCH_ID=550
+DATASET=lsun_bedroom
+EXP=bed_f8_dit
+METHOD=dopri5
+STEPS=0
+USE_ORIGIN_ADM=False

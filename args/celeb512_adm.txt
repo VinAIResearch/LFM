@@ -1,0 +1,7 @@
+MODEL_TYPE=adm
+EPOCH_ID=450
+DATASET=celeba_256
+EXP=celeb_f8_adm
+METHOD=dopri5
+STEPS=0
+USE_ORIGIN_ADM=True
