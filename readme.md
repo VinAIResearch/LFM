@@ -1,3 +1,46 @@
+##### Table of contents
+1. [Installation](#Installation)
+2. [Dataset preparation](#Dataset-preparation)
+3. [How to run](#How-to-run)
+4. [Results](#Results)
+5. [Evaluation](#Evaluation)
+6. [Acknowledgments](#Acknowledgments)
+7. [Contacts](#Contacts)
+
+# Official PyTorch implementation of "Flow Matching in Latent Space")
+<div align="center">
+  <a href="https://quandao10.github.io/" target="_blank">Quan&nbsp;Dao</a> &emsp; <b>&middot;</b> &emsp;
+  <a href="https://hao-pt.github.io/" target="_blank">Hao&nbsp;Phung</a> &emsp; <b>&middot;</b> &emsp;
+  <a href="https://tbng.github.io/" target="_blank">Binh&nbsp;Nguyen</a> &emsp; <b>&middot;</b> &emsp;
+  <a href="https://sites.google.com/site/anhttranusc/" target="_blank">Anh&nbsp;Tran</a>
+  <br> <br>
+  <a href="https://www.vinai.io/">VinAI Research</a>
+  <!-- <br> <br>
+  <a href="https://arxiv.org/abs/2211.16152">[Paper]</a> &emsp;&emsp;
+  <a href="https://drive.google.com/file/d/1LSEYfdhS4Zjtx1VRrctmVt6xjEjgmpVA/view?usp=sharing">[Poster]</a> &emsp;&emsp;
+  <a href="https://drive.google.com/file/d/11JE-RFtYJWx6XdXH8zZxgzRAvGJ6-IV2/view?usp=sharing">[Slides]</a> &emsp;&emsp;
+  <a href="https://youtu.be/KaIMMamhKsU">[Video]</a> -->
+</div>
+<br>
+<div align="center">
+    <img width="1000" alt="teaser" src="assets/single_wavelet.png"/>
+</div>
+
+> Abstract: Flow matching is a recent framework to train generative models that exhibits impressive empirical performance while being relatively easier to train compared with diffusion-based models.
+ Despite its advantageous properties, prior methods still face the challenges of expensive computing and a large number of function evaluations of off-the-shelf solvers in the pixel space. Furthermore, although latent-based generative methods have shown great success in recent years, this particular model type remains underexplored in this area. In this work, we propose to apply flow matching in the latent spaces of pretrained autoencoders, which offers improved computational efficiency and scalability for high-resolution image synthesis. This enables flow-matching training on constrained computational resources while maintaining their quality and flexibility. Through extensive experiments, our approach demonstrates its effectiveness in both quantitative and qualitative results on various datasets,  such as CelebA-HQ, FFHQ, LSUN Church \& Bedroom, and ImageNet. We also provide a theoretical control of the Wasserstein-2 distance between the reconstructed latent flow distribution and true data distribution, showing it is upper-bounded by the latent flow matching objective.
+
+Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
+```bibtex
+@article{dao2023ldm,
+    author    = {Dao, Quan and Phung, Hao and Tran, Anh},
+    title     = {Flow Matching in Latent Space},
+    journal   = {arXiv preprint},
+    volume    = {arXiv:<id>},
+    year      = {2023}
+}
+```
+ **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
+
 # Latent Flow Matching
 
 ## Installation
@@ -8,6 +51,17 @@ Please install required libraries:
 ```
 pip install -r requirements.txt
 ```
+
+## Dataset preparation ##
+### Image generation
+For CelebA HQ 256, FFHQ 256 and LSUN, please check [NVAE's instructions](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) out.
+
+For higher resolution datasets (CelebA HQ 512 & 1024), please refer to [WaveDiff's documents](https://github.com/VinAIResearch/WaveDiff.git).
+
+For ImageNet dataset, please download it directly from [the official website](https://www.image-net.org/download.php).
+
+### Downstream tasks
+ToDo
 
 ## Training
 
