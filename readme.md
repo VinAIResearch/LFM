@@ -33,7 +33,7 @@
 Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
 
 ```bibtex
-@article{dao2023ldm,
+@article{dao2023lfm,
     author    = {Dao, Quan and Phung, Hao and Tran, Anh},
     title     = {Flow Matching in Latent Space},
     journal   = {arXiv preprint},
