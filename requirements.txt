@@ -4,5 +4,6 @@ torchdiffeq
 ml_collections
 omegaconf
 timm
-# ninja
+ninja
 blobfile
+accelerate
