@@ -152,3 +152,7 @@ python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
 
 ## Acknowledgments
 Our codes are accumulated from different sources: [EDM](https://github.com/NVlabs/edm), [DiT](https://github.com/facebookresearch/DiT.git), [ADM](https://github.com/openai/guided-diffusion), [CD](https://github.com/openai/consistency_models.git), [Flow Matching in 100 LOC by François Rozet](https://gist.github.com/fd6a820e052157f8ac6e2aa39e16c1aa.git) and [WaveDiff](https://github.com/VinAIResearch/WaveDiff). We greatly appreciate these publicly available resources for research and development.
+
+## Contacts ##
+If you have any problems, please open an issue in this repository or ping an email to [v.quandm7@vinai.io](mailto:v.quandm7@vinai.io)/[tienhaophung@gmail.com](mailto:tienhaophung@gmail.com).
+
