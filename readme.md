@@ -11,26 +11,34 @@ pip install -r requirements.txt
 
 ## Training
 
+### Image generation
+
 All training scripts are wrapped in [run.sh](run.sh). Simply comment/uncomment the relevant commands and run `bash run.sh`.
 
+### Downstream tasks
 For downstream tasks as image inpaiting and semantic synthesis, we use the below commands.
 
 **Image inpaiting**
 
 ```
-python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 500 --image_size 256 --num_in_channels 9 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 --num_process_per_node 2 --save_content
+python train_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 \ 
+  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 500 --image_size 256 \
+  --num_in_channels 9 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
+  --num_process_per_node 2 --save_content
 ```
 
 **Semantic Synthesis**
 
 ```
-python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 --num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 --num_process_per_node 2 --save_content
+python train_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256  \
+--batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 175 --image_size 256 \
+--num_in_channels 8 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
+--num_process_per_node 2 --save_content
 ```
 
 
-
 ## Testing
-
+### Image generation
 Please modify some arguments in [run_test.sh](run_test.sh) for corresponding experiments and then run `bash run_test.sh`.
 These arguments are specifies as follows:
 
@@ -43,19 +51,6 @@ METHOD=dopri5
 STEPS=0
 USE_ORIGIN_ADM=False
 ```
-
-For downstream tasks, we firstly run `test_flow_latent_semantic_syn.py` and `test_flow_latent_inpainting.py` to generate the synthesis data based on given conditions. After that, we can evaluate the metric using below commands.
-
-**Image Inpainting**
-```
-python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
-```
-
-**Semantic Synthesis**
-```
-python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
-```
-
 
 Detailed arguments and checkpoints are provided below:
 
@@ -138,3 +133,22 @@ Detailed arguments and checkpoints are provided below:
 Please put downloaded pre-trained models in `saved_info/latent_flow/<DATASET>/<EXP>` directory where `<DATASET>` is defined as in [run.sh](run.sh).
 
 To evaluate FID scores, please download pre-computed stats from [here](https://drive.google.com/drive/folders/1BXCqPUD36HSdrOHj2Gu_vFKA3M3hJspI?usp=share_link) and put it to `pytorch_fid`.
+
+### Downstream tasks
+
+For downstream tasks, we firstly run `test_flow_latent_semantic_syn.py` and `test_flow_latent_inpainting.py` to generate the synthesis data based on given conditions. After that, we can evaluate the metric using below commands.
+
+**Image Inpainting**
+```
+python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
+```
+
+**Semantic Synthesis**
+```
+python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
+```
+
+
+
+## Acknowledgments
+Our codes are accumulated from different sources: [EDM](https://github.com/NVlabs/edm), [DiT](https://github.com/facebookresearch/DiT.git), [ADM](https://github.com/openai/guided-diffusion), [CD](https://github.com/openai/consistency_models.git), [Flow Matching in 100 LOC by François Rozet](https://gist.github.com/fd6a820e052157f8ac6e2aa39e16c1aa.git) and [WaveDiff](https://github.com/VinAIResearch/WaveDiff). We greatly appreciate these publicly available resources for research and development.
