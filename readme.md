@@ -57,7 +57,7 @@ pip install -r requirements.txt
 
 For CelebA HQ 256, FFHQ 256 and LSUN, please check [NVAE's instructions](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) out.
 
-For higher resolution datasets (CelebA HQ 512 & 1024), please refer to [WaveDiff's documents](https://github.com/VinAIResearch/WaveDiff.git).
+For higher resolution datasets (CelebA HQ 512 & 1024), please refer to [WaveDiff's documents](https://github.com/VinAIResearch/WaveDiff#dataset-preparation).
 
 For ImageNet dataset, please download it directly from [the official website](https://www.image-net.org/download.php).
 
@@ -69,7 +69,7 @@ All training scripts are wrapped in [run.sh](bash_scripts/run.sh). Simply commen
 
 ### Sampling
 
-Run `run_test.sh`/`run_test_cls.sh` with corresponding argument's file.
+Run [run_test.sh](bash_scripts/run_test.sh) /[run_test_cls.sh](bash_scripts/run_test_cls.sh) with corresponding argument's file.
 
 ```
 bash run_test.sh <path_to_arg_file>
