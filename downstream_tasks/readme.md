@@ -35,11 +35,21 @@ For downstream tasks, we firstly run `test_flow_latent_semantic_syn.py` and `tes
 **Image Inpainting**
 
 ```
-python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
+# generate the image from inpainting data
+python test_flow_latent_inpainting.py --exp inpainting_kl --dataset celeba_256 \
+  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 500 --image_size 256 \
+  --num_in_channels 9 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
+
+python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
 ```
 
 **Semantic Synthesis**
 
 ```
-python pytorch_fid/cal_inpainting.py <path_to_generated_data> <path_to_gt_data>
+# generate the image from segmentation map
+python test_flow_latent_semantic_syn.py --exp semantic_kl --dataset celeba_256 \
+  --batch_size 64 --lr 5e-5 --scale_factor 0.18215 --num_epoch 500 --image_size 256 \
+  --num_in_channels 9 --num_out_channels 4 --ch_mult 1 2 3 4 --attn_resolution 16 8 \
+
+python pytorch_fid/fid_score.py <path_to_generated_data> <path_to_gt_data>
 ```
