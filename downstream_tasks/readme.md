@@ -1,4 +1,8 @@
 # Downstream tasks
+## Data preparation
+Image inpainting:
+
+Semantic synthesis:
 
 ## Training
 
