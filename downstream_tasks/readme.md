@@ -1,6 +1,6 @@
 # Downstream tasks
 ## Data preparation
-Image inpainting: We follow the training and evaluating protocol from the [MAT: Mask-Aware Transformer for Large Hole Image Inpainting](https://github.com/fenglinglwb/MAT)
+Image inpainting: We follow the training and evaluating protocol from paper: [MAT: Mask-Aware Transformer for Large Hole Image Inpainting](https://github.com/fenglinglwb/MAT)
 
 Semantic synthesis:
 
