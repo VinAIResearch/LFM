@@ -6,20 +6,21 @@
 # ---------------------------------------------------------------
 
 import argparse
-import torch
-import numpy as np
-from torchdiffeq import odeint_adjoint as odeint
 import os
+import shutil
+
+import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 from datasets_prep import get_inpainting_dataset
 from models.util import get_flow_model
-from torch.multiprocessing import Process
-import torch.distributed as dist
-import shutil
 from omegaconf import OmegaConf
+from torch.multiprocessing import Process
+from torchdiffeq import odeint_adjoint as odeint
+
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -66,8 +67,8 @@ def sample_from_model(model, z_0):
 
 # %%
 def train(rank, gpu, args):
-    from EMA import EMA
     from diffusers.models import AutoencoderKL
+    from EMA import EMA
 
     torch.manual_seed(args.seed + rank)
     torch.cuda.manual_seed(args.seed + rank)
@@ -77,9 +78,7 @@ def train(rank, gpu, args):
     batch_size = args.batch_size
 
     dataset = get_inpainting_dataset(args)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset, num_replicas=args.world_size, rank=rank
-    )
+    train_sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=args.world_size, rank=rank)
     data_loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
@@ -91,9 +90,7 @@ def train(rank, gpu, args):
     )
 
     model = get_flow_model(args).to(device)
-    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(
-        device
-    )
+    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
 
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
@@ -110,14 +107,10 @@ def train(rank, gpu, args):
     if args.use_ema:
         optimizer = EMA(optimizer, ema_decay=args.ema_decay)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, args.num_epoch, eta_min=1e-5
-    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
 
     # ddp
-    model = nn.parallel.DistributedDataParallel(
-        model, device_ids=[gpu], find_unused_parameters=False
-    )
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu], find_unused_parameters=False)
 
     exp = args.exp
     parent_dir = "./saved_info/latent_flow_inpaint/{}".format(args.dataset)
@@ -152,19 +145,9 @@ def train(rank, gpu, args):
             masked_image = masked_image.to(device, non_blocking=True)
             model.zero_grad()
             with torch.no_grad():
-                z_1 = (
-                    first_stage_model.encode(x_1)
-                    .latent_dist.sample()
-                    .mul_(args.scale_factor)
-                )
-                c = (
-                    first_stage_model.encode(masked_image)
-                    .latent_dist.sample()
-                    .mul_(args.scale_factor)
-                )
-                cc = F.interpolate(mask, size=c.shape[-2:]).to(
-                    device, non_blocking=True
-                )
+                z_1 = first_stage_model.encode(x_1).latent_dist.sample().mul_(args.scale_factor)
+                c = first_stage_model.encode(masked_image).latent_dist.sample().mul_(args.scale_factor)
+                cc = F.interpolate(mask, size=c.shape[-2:]).to(device, non_blocking=True)
                 c = torch.cat((c, cc), dim=1)
             # sample t
             t = torch.rand((z_1.size(0),), device=device)
@@ -179,11 +162,7 @@ def train(rank, gpu, args):
             global_step += 1
             if iteration % 100 == 0:
                 if rank == 0:
-                    print(
-                        "epoch {} iteration{}, Loss: {}".format(
-                            epoch, iteration, loss.item()
-                        )
-                    )
+                    print("epoch {} iteration{}, Loss: {}".format(epoch, iteration, loss.item()))
 
         if not args.no_lr_decay:
             scheduler.step()
@@ -202,18 +181,12 @@ def train(rank, gpu, args):
                 masked_image = (1 - mask) * x_1
                 masked_image = masked_image * 2.0 - 1.0
                 mask = mask * 2 - 1
-                c = (
-                    first_stage_model.encode(masked_image)
-                    .latent_dist.sample()
-                    .mul_(args.scale_factor)
-                )
+                c = first_stage_model.encode(masked_image).latent_dist.sample().mul_(args.scale_factor)
                 cc = F.interpolate(mask, size=c.shape[-2:])
                 c = torch.cat((c, cc), dim=1)
                 model_cond = WrapperCondFlow(model, c)
                 fake_sample = sample_from_model(model_cond, rand)[-1]
-                fake_image = first_stage_model.decode(
-                    fake_sample / args.scale_factor
-                ).sample
+                fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
             torchvision.utils.save_image(
                 masked_image,
                 os.path.join(exp_path, "image_epoch_masked_{}.png".format(epoch)),
@@ -257,9 +230,7 @@ def init_processes(rank, size, fn, args):
     os.environ["MASTER_PORT"] = args.master_port
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
-    dist.init_process_group(
-        backend="nccl", init_method="env://", rank=rank, world_size=size
-    )
+    dist.init_process_group(backend="nccl", init_method="env://", rank=rank, world_size=size)
     fn(rank, gpu, args)
     dist.barrier()
     cleanup()
@@ -272,26 +243,16 @@ def cleanup():
 # %%
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("ddgan parameters")
-    parser.add_argument(
-        "--seed", type=int, default=1024, help="seed used for initialization"
-    )
+    parser.add_argument("--seed", type=int, default=1024, help="seed used for initialization")
 
     parser.add_argument("--resume", action="store_true", default=False)
 
     parser.add_argument("--image_size", type=int, default=32, help="size of image")
-    parser.add_argument(
-        "--scale_factor", type=float, default=0.18215, help="size of image"
-    )
-    parser.add_argument(
-        "--num_in_channels", type=int, default=3, help="in channel image"
-    )
-    parser.add_argument(
-        "--num_out_channels", type=int, default=3, help="in channel image"
-    )
+    parser.add_argument("--scale_factor", type=float, default=0.18215, help="size of image")
+    parser.add_argument("--num_in_channels", type=int, default=3, help="in channel image")
+    parser.add_argument("--num_out_channels", type=int, default=3, help="in channel image")
     parser.add_argument("--nf", type=int, default=256, help="channel of image")
-    parser.add_argument(
-        "--centered", action="store_false", default=True, help="-1,1 scale"
-    )
+    parser.add_argument("--centered", action="store_false", default=True, help="-1,1 scale")
     parser.add_argument("--resamp_with_conv", type=bool, default=True)
     parser.add_argument(
         "--num_res_blocks",
@@ -300,12 +261,8 @@ if __name__ == "__main__":
         help="number of resnet blocks per scale",
     )
     parser.add_argument("--num_heads", type=int, default=4, help="number of head")
-    parser.add_argument(
-        "--num_head_upsample", type=int, default=-1, help="number of head upsample"
-    )
-    parser.add_argument(
-        "--num_head_channels", type=int, default=-1, help="number of head channels"
-    )
+    parser.add_argument("--num_head_upsample", type=int, default=-1, help="number of head upsample")
+    parser.add_argument("--num_head_channels", type=int, default=-1, help="number of head channels")
     parser.add_argument(
         "--attn_resolutions",
         nargs="+",
@@ -327,9 +284,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_new_attention_order", type=bool, default=False)
 
     # geenrator and training
-    parser.add_argument(
-        "--exp", default="experiment_cifar_default", help="name of experiment"
-    )
+    parser.add_argument("--exp", default="experiment_cifar_default", help="name of experiment")
     parser.add_argument("--dataset", default="cifar10", help="name of dataset")
     parser.add_argument("--num_timesteps", type=int, default=200)
 
@@ -342,12 +297,8 @@ if __name__ == "__main__":
     parser.add_argument("--beta2", type=float, default=0.9, help="beta2 for adam")
     parser.add_argument("--no_lr_decay", action="store_true", default=False)
 
-    parser.add_argument(
-        "--use_ema", action="store_true", default=False, help="use EMA or not"
-    )
-    parser.add_argument(
-        "--ema_decay", type=float, default=0.9999, help="decay rate for EMA"
-    )
+    parser.add_argument("--use_ema", action="store_true", default=False, help="use EMA or not")
+    parser.add_argument("--ema_decay", type=float, default=0.9999, help="decay rate for EMA")
 
     parser.add_argument("--save_content", action="store_true", default=False)
     parser.add_argument(
@@ -356,30 +307,20 @@ if __name__ == "__main__":
         default=10,
         help="save content for resuming every x epochs",
     )
-    parser.add_argument(
-        "--save_ckpt_every", type=int, default=25, help="save ckpt every x epochs"
-    )
+    parser.add_argument("--save_ckpt_every", type=int, default=25, help="save ckpt every x epochs")
 
-    ###ddp
+    # ddp
     parser.add_argument(
         "--num_proc_node",
         type=int,
         default=1,
         help="The number of nodes in multi node env.",
     )
-    parser.add_argument(
-        "--num_process_per_node", type=int, default=1, help="number of gpus"
-    )
+    parser.add_argument("--num_process_per_node", type=int, default=1, help="number of gpus")
     parser.add_argument("--node_rank", type=int, default=0, help="The index of node.")
-    parser.add_argument(
-        "--local_rank", type=int, default=0, help="rank of process in the node"
-    )
-    parser.add_argument(
-        "--master_address", type=str, default="127.0.0.1", help="address for master"
-    )
-    parser.add_argument(
-        "--master_port", type=str, default="6255", help="address for master"
-    )
+    parser.add_argument("--local_rank", type=int, default=0, help="rank of process in the node")
+    parser.add_argument("--master_address", type=str, default="127.0.0.1", help="address for master")
+    parser.add_argument("--master_port", type=str, default="6255", help="address for master")
 
     # torch.multiprocessing.set_start_method('spawn', force=True)# good solution !!!!
 
@@ -394,13 +335,8 @@ if __name__ == "__main__":
             global_rank = rank + args.node_rank * args.num_process_per_node
             global_size = args.num_proc_node * args.num_process_per_node
             args.global_rank = global_rank
-            print(
-                "Node rank %d, local proc %d, global proc %d"
-                % (args.node_rank, rank, global_rank)
-            )
-            p = Process(
-                target=init_processes, args=(global_rank, global_size, train, args)
-            )
+            print("Node rank %d, local proc %d, global proc %d" % (args.node_rank, rank, global_rank))
+            p = Process(target=init_processes, args=(global_rank, global_size, train, args))
             p.start()
             processes.append(p)
 

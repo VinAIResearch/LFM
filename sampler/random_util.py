@@ -1,6 +1,7 @@
 import torch as th
 import torch.distributed as dist
 
+
 def dev():
     """
     Get the device to use for torch.distributed.
@@ -62,9 +63,7 @@ class DeterministicGenerator:
             self.world_size,
         )
         indices = th.clamp(indices, 0, self.num_samples - 1)
-        assert (
-            len(indices) == size[0]
-        ), f"rank={self.rank}, ws={self.world_size}, l={len(indices)}, bs={size[0]}"
+        assert len(indices) == size[0], f"rank={self.rank}, ws={self.world_size}, l={len(indices)}, bs={size[0]}"
         return global_size, indices
 
     def get_generator(self, device):
@@ -73,16 +72,12 @@ class DeterministicGenerator:
     def randn(self, *size, dtype=th.float, device="cpu"):
         global_size, indices = self.get_global_size_and_indices(size)
         generator = self.get_generator(device)
-        return th.randn(*global_size, generator=generator, dtype=dtype, device=device)[
-            indices
-        ]
+        return th.randn(*global_size, generator=generator, dtype=dtype, device=device)[indices]
 
     def randint(self, low, high, size, dtype=th.long, device="cpu"):
         global_size, indices = self.get_global_size_and_indices(size)
         generator = self.get_generator(device)
-        return th.randint(
-            low, high, generator=generator, size=global_size, dtype=dtype, device=device
-        )[indices]
+        return th.randint(low, high, generator=generator, size=global_size, dtype=dtype, device=device)[indices]
 
     def randn_like(self, tensor):
         size, dtype, device = tensor.size(), tensor.dtype, tensor.device
@@ -130,9 +125,7 @@ class DeterministicIndividualGenerator:
             self.world_size,
         )
         indices = th.clamp(indices, 0, self.num_samples - 1)
-        assert (
-            len(indices) == size[0]
-        ), f"rank={self.rank}, ws={self.world_size}, l={len(indices)}, bs={size[0]}"
+        assert len(indices) == size[0], f"rank={self.rank}, ws={self.world_size}, l={len(indices)}, bs={size[0]}"
         return (1, *size[1:]), indices
 
     def get_generator(self, device):
@@ -142,10 +135,7 @@ class DeterministicIndividualGenerator:
         size, indices = self.get_size_and_indices(size)
         generator = self.get_generator(device)
         return th.cat(
-            [
-                th.randn(*size, generator=generator[i], dtype=dtype, device=device)
-                for i in indices
-            ],
+            [th.randn(*size, generator=generator[i], dtype=dtype, device=device) for i in indices],
             dim=0,
         )
 
@@ -178,12 +168,6 @@ class DeterministicIndividualGenerator:
         return self.seed
 
     def set_seed(self, seed):
-        [
-            rng_cpu.manual_seed(i + self.num_samples * seed)
-            for i, rng_cpu in enumerate(self.rng_cpu)
-        ]
+        [rng_cpu.manual_seed(i + self.num_samples * seed) for i, rng_cpu in enumerate(self.rng_cpu)]
         if th.cuda.is_available():
-            [
-                rng_cuda.manual_seed(i + self.num_samples * seed)
-                for i, rng_cuda in enumerate(self.rng_cuda)
-            ]
+            [rng_cuda.manual_seed(i + self.num_samples * seed) for i, rng_cuda in enumerate(self.rng_cuda)]

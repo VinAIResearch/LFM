@@ -1,45 +1,44 @@
-import cv2
-import os
-import sys
-import numpy as np
-import math
 import glob
-import pyspng
-import PIL.Image
-import torch
+import os
+import pickle
+
 import dnnlib
+import numpy as np
+import PIL.Image
+import pyspng
 import scipy.linalg
 import sklearn.svm
-import pickle
+import torch
 
 
 _feature_detector_cache = dict()
 
-def get_feature_detector(url, device=torch.device('cpu'), num_gpus=1, rank=0, verbose=False):
+
+def get_feature_detector(url, device=torch.device("cpu"), num_gpus=1, rank=0, verbose=False):
     assert 0 <= rank < num_gpus
     key = (url, device)
     if key not in _feature_detector_cache:
-        is_leader = (rank == 0)
+        is_leader = rank == 0
         if not is_leader and num_gpus > 1:
-            torch.distributed.barrier() # leader goes first
+            torch.distributed.barrier()  # leader goes first
         with dnnlib.util.open_url(url, verbose=(verbose and is_leader)) as f:
             _feature_detector_cache[key] = torch.jit.load(f).eval().to(device)
         if is_leader and num_gpus > 1:
-            torch.distributed.barrier() # others follow
+            torch.distributed.barrier()  # others follow
     return _feature_detector_cache[key]
 
 
 def read_image(image_path):
-    with open(image_path, 'rb') as f:
-        if pyspng is not None and image_path.endswith('.png'):
+    with open(image_path, "rb") as f:
+        if pyspng is not None and image_path.endswith(".png"):
             image = pyspng.load(f.read())
         else:
             image = np.array(PIL.Image.open(f))
     if image.ndim == 2:
-        image = image[:, :, np.newaxis] # HW => HWC
+        image = image[:, :, np.newaxis]  # HW => HWC
     if image.shape[2] == 1:
         image = np.repeat(image, 3, axis=2)
-    image = image.transpose(2, 0, 1) # HWC => CHW
+    image = image.transpose(2, 0, 1)  # HWC => CHW
     image = torch.from_numpy(image).unsqueeze(0).to(torch.uint8)
 
     return image
@@ -74,7 +73,7 @@ class FeatureStats:
         if (self.max_items is not None) and (self.num_items + x.shape[0] > self.max_items):
             if self.num_items >= self.max_items:
                 return
-            x = x[:self.max_items - self.num_items]
+            x = x[: self.max_items - self.num_items]
 
         self.set_num_features(x.shape[1])
         self.num_items += x.shape[0]
@@ -94,7 +93,7 @@ class FeatureStats:
                 y = x.clone()
                 torch.distributed.broadcast(y, src=src)
                 ys.append(y)
-            x = torch.stack(ys, dim=1).flatten(0, 1) # interleave samples
+            x = torch.stack(ys, dim=1).flatten(0, 1)  # interleave samples
         self.append(x.cpu().numpy())
 
     def get_all(self):
@@ -112,12 +111,12 @@ class FeatureStats:
         return mean, cov
 
     def save(self, pkl_file):
-        with open(pkl_file, 'wb') as f:
+        with open(pkl_file, "wb") as f:
             pickle.dump(self.__dict__, f)
 
     @staticmethod
     def load(pkl_file):
-        with open(pkl_file, 'rb') as f:
+        with open(pkl_file, "rb") as f:
             s = dnnlib.EasyDict(pickle.load(f))
         obj = FeatureStats(capture_all=s.capture_all, max_items=s.max_items)
         obj.__dict__.update(s)
@@ -125,19 +124,19 @@ class FeatureStats:
 
 
 def calculate_metrics(folder1, folder2):
-    l1 = sorted(glob.glob(folder1 + '/*.png') + glob.glob(folder1 + '/*.jpg'))
-    l2 = sorted(glob.glob(folder2 + '/*.png') + glob.glob(folder2 + '/*.jpg'))[:2950]
+    l1 = sorted(glob.glob(folder1 + "/*.png") + glob.glob(folder1 + "/*.jpg"))
+    l2 = sorted(glob.glob(folder2 + "/*.png") + glob.glob(folder2 + "/*.jpg"))[:2950]
     print(len(l1))
     print(len(l2))
-    assert(len(l1) == len(l2))
-    print('length:', len(l1))
+    assert len(l1) == len(l2)
+    print("length:", len(l1))
 
     # l1 = l1[:3]; l2 = l2[:3];
 
     # build detector
-    detector_url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/inception-2015-12-05.pt'
-    detector_kwargs = dict(return_features=True) # Return raw features before the softmax layer.
-    device = torch.device('cuda:0')
+    detector_url = "https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/inception-2015-12-05.pt"
+    detector_kwargs = dict(return_features=True)  # Return raw features before the softmax layer.
+    device = torch.device("cuda:0")
     detector = get_feature_detector(url=detector_url, device=device, num_gpus=1, rank=0, verbose=False)
     detector.eval()
 
@@ -149,13 +148,13 @@ def calculate_metrics(folder1, folder2):
             print(i)
             _, name1 = os.path.split(fpath1)
             _, name2 = os.path.split(fpath2)
-            name1 = name1.split('.')[0]
-            name2 = name2.split('.')[0]
+            name1 = name1.split(".")[0]
+            name2 = name2.split(".")[0]
             # assert name1 == name2, 'Illegal mapping: %s, %s' % (name1, name2)
 
             img1 = read_image(fpath1).to(device)
             img2 = read_image(fpath2).to(device)
-            assert img1.shape == img2.shape, 'Illegal shape'
+            assert img1.shape == img2.shape, "Illegal shape"
             fea1 = detector(img1, **detector_kwargs)
             stat1.append_torch(fea1, num_gpus=1, rank=0)
             fea2 = detector(img2, **detector_kwargs)
@@ -165,7 +164,7 @@ def calculate_metrics(folder1, folder2):
     mu1, sigma1 = stat1.get_mean_cov()
     mu2, sigma2 = stat2.get_mean_cov()
     m = np.square(mu1 - mu2).sum()
-    s, _ = scipy.linalg.sqrtm(np.dot(sigma1, sigma2), disp=False) # pylint: disable=no-member
+    s, _ = scipy.linalg.sqrtm(np.dot(sigma1, sigma2), disp=False)  # pylint: disable=no-member
     fid = np.real(m + np.trace(sigma1 + sigma2 - s * 2))
 
     # calculate pids and uids
@@ -174,7 +173,7 @@ def calculate_metrics(folder1, folder2):
     svm = sklearn.svm.LinearSVC(dual=False)
     svm_inputs = np.concatenate([real_activations, fake_activations])
     svm_targets = np.array([1] * real_activations.shape[0] + [0] * fake_activations.shape[0])
-    print('SVM fitting ...')
+    print("SVM fitting ...")
     svm.fit(svm_inputs, svm_targets)
     uids = 1 - svm.score(svm_inputs, svm_targets)
     real_outputs = svm.decision_function(real_activations)
@@ -184,11 +183,11 @@ def calculate_metrics(folder1, folder2):
     return fid, pids, uids
 
 
-if __name__ == '__main__':
-    folder1 = './inpainting_generated_samples/celeba_256/'
-    folder2 = './gt_celeb/'
+if __name__ == "__main__":
+    folder1 = "./inpainting_generated_samples/celeba_256/"
+    folder2 = "./gt_celeb/"
 
     fid, pids, uids = calculate_metrics(folder1, folder2)
-    print('fid: %.4f, pids: %.4f, uids: %.4f' % (fid, pids, uids))
-    with open('fid_pids_uids.txt', 'w') as f:
-        f.write('fid: %.4f, pids: %.4f, uids: %.4f' % (fid, pids, uids))
+    print("fid: %.4f, pids: %.4f, uids: %.4f" % (fid, pids, uids))
+    with open("fid_pids_uids.txt", "w") as f:
+        f.write("fid: %.4f, pids: %.4f, uids: %.4f" % (fid, pids, uids))

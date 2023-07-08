@@ -4,10 +4,13 @@ from copy import deepcopy
 import numpy as np
 from skimage import img_as_ubyte
 from skimage.transform import rescale, resize
+
+
 try:
     from detectron2 import model_zoo
     from detectron2.config import get_cfg
     from detectron2.engine import DefaultPredictor
+
     DETECTRON_INSTALLED = True
 except:
     print("Detectron v2 is not installed")
@@ -16,11 +19,11 @@ except:
 from .countless.countless2d import zero_corrected_countless
 
 
-class ObjectMask():
+class ObjectMask:
     def __init__(self, mask):
         self.height, self.width = mask.shape
         (self.up, self.down), (self.left, self.right) = self._get_limits(mask)
-        self.mask = mask[self.up:self.down, self.left:self.right].copy()
+        self.mask = mask[self.up : self.down, self.left : self.right].copy()
 
     @staticmethod
     def _get_limits(mask):
@@ -114,7 +117,7 @@ class ObjectMask():
     def restore_full_mask(self, allow_crop=False):
         cropped = self.crop_to_canvas(inplace=allow_crop)
         mask = np.zeros((cropped.height, cropped.width), dtype=bool)
-        mask[cropped.up:cropped.down, cropped.left:cropped.right] = cropped.mask
+        mask[cropped.up : cropped.down, cropped.left : cropped.right] = cropped.mask
         return mask
 
     def shift(self, vertical=0, horizontal=0, inplace=False):
@@ -138,11 +141,23 @@ class RigidnessMode(enum.Enum):
 
 
 class SegmentationMask:
-    def __init__(self, confidence_threshold=0.5, rigidness_mode=RigidnessMode.rigid,
-                 max_object_area=0.3, min_mask_area=0.02, downsample_levels=6, num_variants_per_mask=4,
-                 max_mask_intersection=0.5, max_foreground_coverage=0.5, max_foreground_intersection=0.5,
-                 max_hidden_area=0.2, max_scale_change=0.25, horizontal_flip=True,
-                 max_vertical_shift=0.1, position_shuffle=True):
+    def __init__(
+        self,
+        confidence_threshold=0.5,
+        rigidness_mode=RigidnessMode.rigid,
+        max_object_area=0.3,
+        min_mask_area=0.02,
+        downsample_levels=6,
+        num_variants_per_mask=4,
+        max_mask_intersection=0.5,
+        max_foreground_coverage=0.5,
+        max_foreground_intersection=0.5,
+        max_hidden_area=0.2,
+        max_scale_change=0.25,
+        horizontal_flip=True,
+        max_vertical_shift=0.1,
+        position_shuffle=True,
+    ):
         """
         :param confidence_threshold: float; threshold for confidence of the panoptic segmentator to allow for
         the instance.
@@ -166,7 +181,7 @@ class SegmentationMask:
         :param position_shuffle: shuffle
         """
 
-        assert DETECTRON_INSTALLED, 'Cannot use SegmentationMask without detectron2'
+        assert DETECTRON_INSTALLED, "Cannot use SegmentationMask without detectron2"
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-PanopticSegmentation/panoptic_fpn_R_101_3x.yaml"))
         self.cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-PanopticSegmentation/panoptic_fpn_R_101_3x.yaml")
@@ -195,7 +210,7 @@ class SegmentationMask:
 
     @staticmethod
     def _is_power_of_two(n):
-        return (n != 0) and (n & (n-1) == 0)
+        return (n != 0) and (n & (n - 1) == 0)
 
     def identify_candidates(self, panoptic_seg, segments_info):
         potential_mask_ids = []
@@ -235,16 +250,12 @@ class SegmentationMask:
             horizontal_flip = False
         vertical_shift = np.random.uniform(-self.max_vertical_shift, self.max_vertical_shift)
 
-        return {
-            "scaling_factor": scaling_factor,
-            "horizontal_flip": horizontal_flip,
-            "vertical_shift": vertical_shift
-        }
+        return {"scaling_factor": scaling_factor, "horizontal_flip": horizontal_flip, "vertical_shift": vertical_shift}
 
     def _get_intersection(self, mask_array, mask_object):
-        intersection = mask_array[
-            mask_object.up:mask_object.down, mask_object.left:mask_object.right
-        ] & mask_object.mask
+        intersection = (
+            mask_array[mask_object.up : mask_object.down, mask_object.left : mask_object.right] & mask_object.mask
+        )
         return intersection
 
     def _check_masks_intersection(self, aug_mask, total_mask_area, prev_masks):
@@ -252,8 +263,9 @@ class SegmentationMask:
             intersection_area = self._get_intersection(existing_mask, aug_mask).sum()
             intersection_existing = intersection_area / existing_mask.sum()
             intersection_current = 1 - (aug_mask.area() - intersection_area) / total_mask_area
-            if (intersection_existing > self.max_mask_intersection) or \
-               (intersection_current > self.max_mask_intersection):
+            if (intersection_existing > self.max_mask_intersection) or (
+                intersection_current > self.max_mask_intersection
+            ):
                 return False
         return True
 
@@ -275,19 +287,21 @@ class SegmentationMask:
         chosen_masks = []
         chosen_parameters = []
         # to fix the case when resizing gives mask_object consisting only of False
-        scaling_factor_lower_bound = 0.
+        scaling_factor_lower_bound = 0.0
 
         for var_idx in range(self.num_variants_per_mask):
             # Obtaining augmentation parameters and applying them to the downscaled mask_object
             augmentation_params = self._augmentation_params()
-            augmentation_params["scaling_factor"] = min([
-                augmentation_params["scaling_factor"],
-                2 * min(orig_mask.up, orig_mask.height - orig_mask.down) / orig_mask.height + 1.,
-                2 * min(orig_mask.left, orig_mask.width - orig_mask.right) / orig_mask.width + 1.
-            ])
-            augmentation_params["scaling_factor"] = max([
-                augmentation_params["scaling_factor"], scaling_factor_lower_bound
-            ])
+            augmentation_params["scaling_factor"] = min(
+                [
+                    augmentation_params["scaling_factor"],
+                    2 * min(orig_mask.up, orig_mask.height - orig_mask.down) / orig_mask.height + 1.0,
+                    2 * min(orig_mask.left, orig_mask.width - orig_mask.right) / orig_mask.width + 1.0,
+                ]
+            )
+            augmentation_params["scaling_factor"] = max(
+                [augmentation_params["scaling_factor"], scaling_factor_lower_bound]
+            )
 
             aug_mask = deepcopy(orig_mask)
             aug_mask.rescale(augmentation_params["scaling_factor"], inplace=True)
@@ -295,7 +309,7 @@ class SegmentationMask:
                 aug_mask.horizontal_flip(inplace=True)
             total_aug_area = aug_mask.area()
             if total_aug_area == 0:
-                scaling_factor_lower_bound = 1.
+                scaling_factor_lower_bound = 1.0
                 continue
 
             # Fix if the element vertical shift is too strong and shown area is too small:
@@ -307,7 +321,7 @@ class SegmentationMask:
             augmentation_params["vertical_shift"] = np.clip(
                 augmentation_params["vertical_shift"],
                 -(aug_mask.up + max_hidden_up) / aug_mask.height,
-                (aug_mask.height - aug_mask.down + max_hidden_down) / aug_mask.height
+                (aug_mask.height - aug_mask.down + max_hidden_down) / aug_mask.height,
             )
             # Applying vertical shift:
             vertical_shift = int(round(aug_mask.height * augmentation_params["vertical_shift"]))
@@ -319,9 +333,10 @@ class SegmentationMask:
             horizontal_area = aug_mask.mask.sum(axis=0) / total_aug_area
             max_hidden_left = np.searchsorted(horizontal_area.cumsum(), max_hidden_area)
             max_hidden_right = np.searchsorted(horizontal_area[::-1].cumsum(), max_hidden_area)
-            allowed_shifts = np.arange(-max_hidden_left, aug_mask.width -
-                                      (aug_mask.right - aug_mask.left) + max_hidden_right + 1)
-            allowed_shifts = - (aug_mask.left - allowed_shifts)
+            allowed_shifts = np.arange(
+                -max_hidden_left, aug_mask.width - (aug_mask.right - aug_mask.left) + max_hidden_right + 1
+            )
+            allowed_shifts = -(aug_mask.left - allowed_shifts)
 
             if self.position_shuffle:
                 np.random.shuffle(allowed_shifts)
@@ -333,8 +348,9 @@ class SegmentationMask:
                 aug_mask_left.crop_to_canvas(inplace=True)
 
                 prev_masks = [mask] + chosen_masks
-                is_mask_suitable = self._check_masks_intersection(aug_mask_left, total_aug_area, prev_masks) & \
-                                   self._check_foreground_intersection(aug_mask_left, foreground)
+                is_mask_suitable = self._check_masks_intersection(
+                    aug_mask_left, total_aug_area, prev_masks
+                ) & self._check_foreground_intersection(aug_mask_left, foreground)
                 if is_mask_suitable:
                     aug_draw = aug_mask_left.restore_full_mask()
                     chosen_masks.append(aug_draw)
@@ -353,7 +369,9 @@ class SegmentationMask:
         target_width = width if self._is_power_of_two(width) else (1 << width.bit_length())
         target_height = height if self._is_power_of_two(height) else (1 << height.bit_length())
 
-        return resize(mask.astype('float32'), (target_height, target_width), order=0, mode='edge').round().astype('int32')
+        return (
+            resize(mask.astype("float32"), (target_height, target_width), order=0, mode="edge").round().astype("int32")
+        )
 
     def get_masks(self, im, return_panoptic=False):
         panoptic_seg, segments_info = self.get_segmentation(im)
@@ -381,7 +399,7 @@ class SegmentationMask:
             elif self.rigidness_mode is RigidnessMode.rigid:
                 foreground = scene_objects
             else:
-                raise ValueError(f'Unexpected rigidness_mode: {self.rigidness_mode}')
+                raise ValueError(f"Unexpected rigidness_mode: {self.rigidness_mode}")
 
             masks_params = self._move_mask(mask, foreground)
 
@@ -396,7 +414,7 @@ class SegmentationMask:
                 vertical_shift = int(round(aug_mask.height * params["vertical_shift"]))
                 horizontal_shift = int(round(aug_mask.width * params["horizontal_shift"]))
                 aug_mask.shift(vertical=vertical_shift, horizontal=horizontal_shift, inplace=True)
-                aug_mask = aug_mask.restore_full_mask().astype('uint8')
+                aug_mask = aug_mask.restore_full_mask().astype("uint8")
                 if aug_mask.mean() <= self.min_mask_area:
                     continue
                 mask_set.append(aug_mask)

@@ -13,7 +13,7 @@ class SSIM(torch.nn.Module):
         self.window_size = window_size
         self.size_average = size_average
         self.channel = 1
-        self.register_buffer('window', self._create_window(window_size, self.channel))
+        self.register_buffer("window", self._create_window(window_size, self.channel))
 
     def forward(self, img1, img2):
         assert len(img1.shape) == 4
@@ -34,9 +34,9 @@ class SSIM(torch.nn.Module):
         return self._ssim(img1, img2, window, self.window_size, channel, self.size_average)
 
     def _gaussian(self, window_size, sigma):
-        gauss = torch.Tensor([
-            np.exp(-(x - (window_size // 2)) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)
-        ])
+        gauss = torch.Tensor(
+            [np.exp(-((x - (window_size // 2)) ** 2) / float(2 * sigma**2)) for x in range(window_size)]
+        )
         return gauss / gauss.sum()
 
     def _create_window(self, window_size, channel):
@@ -52,23 +52,21 @@ class SSIM(torch.nn.Module):
         mu2_sq = mu2.pow(2)
         mu1_mu2 = mu1 * mu2
 
-        sigma1_sq = F.conv2d(
-            img1 * img1, window, padding=(window_size // 2), groups=channel) - mu1_sq
-        sigma2_sq = F.conv2d(
-            img2 * img2, window, padding=(window_size // 2), groups=channel) - mu2_sq
-        sigma12 = F.conv2d(
-            img1 * img2, window, padding=(window_size // 2), groups=channel) - mu1_mu2
+        sigma1_sq = F.conv2d(img1 * img1, window, padding=(window_size // 2), groups=channel) - mu1_sq
+        sigma2_sq = F.conv2d(img2 * img2, window, padding=(window_size // 2), groups=channel) - mu2_sq
+        sigma12 = F.conv2d(img1 * img2, window, padding=(window_size // 2), groups=channel) - mu1_mu2
 
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
+        C1 = 0.01**2
+        C2 = 0.03**2
 
-        ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
-                   ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+        ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
 
         if size_average:
             return ssim_map.mean()
 
         return ssim_map.mean(1).mean(1).mean(1)
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         return

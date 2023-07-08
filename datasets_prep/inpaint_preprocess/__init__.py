@@ -16,7 +16,7 @@
 #         metrics['lpips'] = LPIPSScore()
 #     if fid:
 #         metrics['fid'] = FIDScore().to(device)
-        
+
 #     if integral_kind is None:
 #         integral_func = None
 #     elif integral_kind == 'ssim_fid100_f1':

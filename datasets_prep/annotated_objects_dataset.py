@@ -1,26 +1,43 @@
-from pathlib import Path
-from typing import Optional, List, Callable, Dict, Any, Union
 import warnings
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL.Image as pil_image
+from datasets_prep.conditional_builder.objects_bbox import ObjectsBoundingBoxConditionalBuilder
+from datasets_prep.conditional_builder.objects_center_points import ObjectsCenterPointsConditionalBuilder
+from datasets_prep.conditional_builder.utils import load_object_from_string
+from datasets_prep.helper_types import Annotation, CropMethodType, Image, SplitType
+from datasets_prep.image_transforms import (
+    CenterCropReturnCoordinates,
+    Random2dCropReturnCoordinates,
+    RandomCrop1dReturnCoordinates,
+    RandomHorizontalFlipReturn,
+    convert_pil_to_tensor,
+)
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from datasets_prep.conditional_builder.objects_bbox import ObjectsBoundingBoxConditionalBuilder
-from datasets_prep.conditional_builder.objects_center_points import ObjectsCenterPointsConditionalBuilder
-from datasets_prep.conditional_builder.utils import load_object_from_string
-from datasets_prep.helper_types import BoundingBox, CropMethodType, Image, Annotation, SplitType
-from datasets_prep.image_transforms import CenterCropReturnCoordinates, RandomCrop1dReturnCoordinates, \
-    Random2dCropReturnCoordinates, RandomHorizontalFlipReturn, convert_pil_to_tensor
-
 
 class AnnotatedObjectsDataset(Dataset):
-    def __init__(self, data_path: Union[str, Path], split: SplitType, keys: List[str], target_image_size: int,
-                 min_object_area: float, min_objects_per_image: int, max_objects_per_image: int,
-                 crop_method: CropMethodType, random_flip: bool, no_tokens: int, use_group_parameter: bool,
-                 encode_crop: bool, category_allow_list_target: str = "", category_mapping_target: str = "",
-                 no_object_classes: Optional[int] = None):
+    def __init__(
+        self,
+        data_path: Union[str, Path],
+        split: SplitType,
+        keys: List[str],
+        target_image_size: int,
+        min_object_area: float,
+        min_objects_per_image: int,
+        max_objects_per_image: int,
+        crop_method: CropMethodType,
+        random_flip: bool,
+        no_tokens: int,
+        use_group_parameter: bool,
+        encode_crop: bool,
+        category_allow_list_target: str = "",
+        category_mapping_target: str = "",
+        no_object_classes: Optional[int] = None,
+    ):
         self.data_path = data_path
         self.split = split
         self.keys = keys
@@ -57,47 +74,52 @@ class AnnotatedObjectsDataset(Dataset):
         sub_paths = {name: top_level.joinpath(sub_path) for name, sub_path in self.get_path_structure().items()}
         for path in sub_paths.values():
             if not path.exists():
-                raise FileNotFoundError(f'{type(self).__name__} data structure error: [{path}] does not exist.')
+                raise FileNotFoundError(f"{type(self).__name__} data structure error: [{path}] does not exist.")
         return sub_paths
 
     @staticmethod
     def load_image_from_disk(path: Path) -> Image:
-        return pil_image.open(path).convert('RGB')
+        return pil_image.open(path).convert("RGB")
 
     @staticmethod
     def setup_transform(target_image_size: int, crop_method: CropMethodType, random_flip: bool):
         transform_functions = []
-        if crop_method == 'none':
+        if crop_method == "none":
             transform_functions.append(transforms.Resize((target_image_size, target_image_size), antialias=True))
-        elif crop_method == 'center':
-            transform_functions.extend([
-                transforms.Resize(target_image_size, antialias=True),
-                CenterCropReturnCoordinates(target_image_size)
-            ])
-        elif crop_method == 'random-1d':
-            transform_functions.extend([
-                transforms.Resize(target_image_size, antialias=True),
-                RandomCrop1dReturnCoordinates(target_image_size)
-            ])
-        elif crop_method == 'random-2d':
-            transform_functions.extend([
-                Random2dCropReturnCoordinates(target_image_size, antialias=True),
-                transforms.Resize(target_image_size)
-            ])
+        elif crop_method == "center":
+            transform_functions.extend(
+                [transforms.Resize(target_image_size, antialias=True), CenterCropReturnCoordinates(target_image_size)]
+            )
+        elif crop_method == "random-1d":
+            transform_functions.extend(
+                [
+                    transforms.Resize(target_image_size, antialias=True),
+                    RandomCrop1dReturnCoordinates(target_image_size),
+                ]
+            )
+        elif crop_method == "random-2d":
+            transform_functions.extend(
+                [
+                    Random2dCropReturnCoordinates(target_image_size, antialias=True),
+                    transforms.Resize(target_image_size),
+                ]
+            )
         elif crop_method is None:
             return None
         else:
-            raise ValueError(f'Received invalid crop method [{crop_method}].')
+            raise ValueError(f"Received invalid crop method [{crop_method}].")
         if random_flip:
             transform_functions.append(RandomHorizontalFlipReturn())
-        transform_functions.append(transforms.Lambda(lambda x: x / 127.5 - 1.))
+        transform_functions.append(transforms.Lambda(lambda x: x / 127.5 - 1.0))
         return transform_functions
 
     def image_transform(self, x: Tensor):
         crop_bbox = None
         flipped = None
         for t in self.transform_functions:
-            if isinstance(t, (RandomCrop1dReturnCoordinates, CenterCropReturnCoordinates, Random2dCropReturnCoordinates)):
+            if isinstance(
+                t, (RandomCrop1dReturnCoordinates, CenterCropReturnCoordinates, Random2dCropReturnCoordinates)
+            ):
                 crop_bbox, x = t(x)
             elif isinstance(t, RandomHorizontalFlipReturn):
                 flipped, x = t(x)
@@ -114,42 +136,49 @@ class AnnotatedObjectsDataset(Dataset):
         # cannot set this up in init because no_classes is only known after loading data in init of superclass
         if self._conditional_builders is None:
             self._conditional_builders = {
-                'objects_center_points': ObjectsCenterPointsConditionalBuilder(
+                "objects_center_points": ObjectsCenterPointsConditionalBuilder(
                     self.no_classes,
                     self.max_objects_per_image,
                     self.no_tokens,
                     self.encode_crop,
                     self.use_group_parameter,
-                    getattr(self, 'use_additional_parameters', False)
+                    getattr(self, "use_additional_parameters", False),
                 ),
-                'objects_bbox': ObjectsBoundingBoxConditionalBuilder(
+                "objects_bbox": ObjectsBoundingBoxConditionalBuilder(
                     self.no_classes,
                     self.max_objects_per_image,
                     self.no_tokens,
                     self.encode_crop,
                     self.use_group_parameter,
-                    getattr(self, 'use_additional_parameters', False)
-                )
+                    getattr(self, "use_additional_parameters", False),
+                ),
             }
         return self._conditional_builders
 
     def filter_categories(self) -> None:
         if self.category_allow_list:
-            self.categories = {id_: cat for id_, cat in self.categories.items() if cat.name in self.category_allow_list}
+            self.categories = {
+                id_: cat for id_, cat in self.categories.items() if cat.name in self.category_allow_list
+            }
         if self.category_mapping:
             self.categories = {id_: cat for id_, cat in self.categories.items() if cat.id not in self.category_mapping}
 
     def setup_category_id_and_number(self) -> None:
         self.category_ids = list(self.categories.keys())
         self.category_ids.sort()
-        if '/m/01s55n' in self.category_ids:
-            self.category_ids.remove('/m/01s55n')
-            self.category_ids.append('/m/01s55n')
+        if "/m/01s55n" in self.category_ids:
+            self.category_ids.remove("/m/01s55n")
+            self.category_ids.append("/m/01s55n")
         self.category_number = {category_id: i for i, category_id in enumerate(self.category_ids)}
-        if self.category_allow_list is not None and self.category_mapping is None \
-                and len(self.category_ids) != len(self.category_allow_list):
-            warnings.warn('Unexpected number of categories: Mismatch with category_allow_list. '
-                          'Make sure all names in category_allow_list exist.')
+        if (
+            self.category_allow_list is not None
+            and self.category_mapping is None
+            and len(self.category_ids) != len(self.category_allow_list)
+        ):
+            warnings.warn(
+                "Unexpected number of categories: Mismatch with category_allow_list. "
+                "Make sure all names in category_allow_list exist."
+            )
 
     def clean_up_annotations_and_image_descriptions(self) -> None:
         image_id_set = set(self.image_ids)
@@ -157,8 +186,12 @@ class AnnotatedObjectsDataset(Dataset):
         self.image_descriptions = {k: v for k, v in self.image_descriptions.items() if k in image_id_set}
 
     @staticmethod
-    def filter_object_number(all_annotations: Dict[str, List[Annotation]], min_object_area: float,
-                             min_objects_per_image: int, max_objects_per_image: int) -> Dict[str, List[Annotation]]:
+    def filter_object_number(
+        all_annotations: Dict[str, List[Annotation]],
+        min_object_area: float,
+        min_objects_per_image: int,
+        max_objects_per_image: int,
+    ) -> Dict[str, List[Annotation]]:
         filtered = {}
         for image_id, annotations in all_annotations.items():
             annotations_with_min_area = [a for a in annotations if a.area > min_object_area]
@@ -172,18 +205,18 @@ class AnnotatedObjectsDataset(Dataset):
     def __getitem__(self, n: int) -> Dict[str, Any]:
         image_id = self.get_image_id(n)
         sample = self.get_image_description(image_id)
-        sample['annotations'] = self.get_annotation(image_id)
+        sample["annotations"] = self.get_annotation(image_id)
 
-        if 'image' in self.keys:
-            sample['image_path'] = str(self.get_image_path(image_id))
-            sample['image'] = self.load_image_from_disk(sample['image_path'])
-            sample['image'] = convert_pil_to_tensor(sample['image'])
-            sample['crop_bbox'], sample['flipped'], sample['image'] = self.image_transform(sample['image'])
-            sample['image'] = sample['image'].permute(1, 2, 0)
+        if "image" in self.keys:
+            sample["image_path"] = str(self.get_image_path(image_id))
+            sample["image"] = self.load_image_from_disk(sample["image_path"])
+            sample["image"] = convert_pil_to_tensor(sample["image"])
+            sample["crop_bbox"], sample["flipped"], sample["image"] = self.image_transform(sample["image"])
+            sample["image"] = sample["image"].permute(1, 2, 0)
 
         for conditional, builder in self.conditional_builders.items():
             if conditional in self.keys:
-                sample[conditional] = builder.build(sample['annotations'], sample['crop_bbox'], sample['flipped'])
+                sample[conditional] = builder.build(sample["annotations"], sample["crop_bbox"], sample["flipped"])
 
         if self.keys:
             # only return specified keys
@@ -216,5 +249,3 @@ class AnnotatedObjectsDataset(Dataset):
 
     def get_image_path(self, image_id: str) -> Path:
         raise NotImplementedError
-    
-

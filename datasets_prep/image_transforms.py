@@ -3,11 +3,12 @@ import warnings
 from typing import Union
 
 import torch
+from datasets_prep.helper_types import BoundingBox, Image
 from torch import Tensor
-from torchvision.transforms import RandomCrop, functional as F, CenterCrop, RandomHorizontalFlip, PILToTensor
+from torchvision.transforms import CenterCrop, PILToTensor, RandomCrop, RandomHorizontalFlip
+from torchvision.transforms import functional as F
 from torchvision.transforms.functional import get_image_size
 
-from datasets_prep.helper_types import BoundingBox, Image
 
 pil_to_tensor = PILToTensor()
 
@@ -89,11 +90,11 @@ class CenterCropReturnCoordinates(CenterCrop):
             w = height / width
             h = 1.0
             x0 = 0.5 - w / 2
-            y0 = 0.
+            y0 = 0.0
         else:
             w = 1.0
             h = width / height
-            x0 = 0.
+            x0 = 0.0
             y0 = 0.5 - h / 2
         return x0, y0, w, h
 
@@ -110,7 +111,7 @@ class CenterCropReturnCoordinates(CenterCrop):
             torchvision.transforms.RandomHorizontalFlip (version 1.7.0)
         """
         width, height = get_image_size(img)
-        return self.get_bbox_of_center_crop(width, height),  F.center_crop(img, self.size)
+        return self.get_bbox_of_center_crop(width, height), F.center_crop(img, self.size)
 
 
 class RandomHorizontalFlipReturn(RandomHorizontalFlip):

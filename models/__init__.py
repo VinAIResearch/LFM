@@ -1,6 +1,6 @@
-from .EDM import get_edm_network
 from .DiT import DiT_models
-from .guided_diffusion.unet import UNetModel  # , UNetModelAttn
+from .EDM import get_edm_network
+from .guided_diffusion.unet import UNetModel, UNetModelAttn
 
 
 def create_network(config):

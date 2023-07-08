@@ -1,15 +1,24 @@
 from itertools import cycle
-from typing import List, Tuple, Callable, Optional
+from typing import Callable, List, Optional, Tuple
 
-from PIL import Image as pil_image, ImageDraw as pil_img_draw, ImageFont
-from more_itertools.recipes import grouper
-from datasets_prep.image_transforms import convert_pil_to_tensor
-from torch import LongTensor, Tensor
-
-from datasets_prep.helper_types import BoundingBox, Annotation
 from datasets_prep.conditional_builder.objects_center_points import ObjectsCenterPointsConditionalBuilder
-from datasets_prep.conditional_builder.utils import COLOR_PALETTE, WHITE, GRAY_75, BLACK, additional_parameters_string, \
-    pad_list, get_plot_font_size, absolute_bbox
+from datasets_prep.conditional_builder.utils import (
+    BLACK,
+    COLOR_PALETTE,
+    GRAY_75,
+    WHITE,
+    absolute_bbox,
+    additional_parameters_string,
+    get_plot_font_size,
+    pad_list,
+)
+from datasets_prep.helper_types import Annotation, BoundingBox
+from datasets_prep.image_transforms import convert_pil_to_tensor
+from more_itertools.recipes import grouper
+from PIL import Image as pil_image
+from PIL import ImageDraw as pil_img_draw
+from PIL import ImageFont
+from torch import LongTensor, Tensor
 
 
 class ObjectsBoundingBoxConditionalBuilder(ObjectsCenterPointsConditionalBuilder):
@@ -19,8 +28,7 @@ class ObjectsBoundingBoxConditionalBuilder(ObjectsCenterPointsConditionalBuilder
 
     def _make_object_descriptors(self, annotations: List[Annotation]) -> List[Tuple[int, ...]]:
         object_triples = [
-            (self.object_representation(ann), *self.token_pair_from_bbox(ann.bbox))
-            for ann in annotations
+            (self.object_representation(ann), *self.token_pair_from_bbox(ann.bbox)) for ann in annotations
         ]
         empty_triple = (self.none, self.none, self.none)
         object_triples = pad_list(object_triples, empty_triple, self.no_max_objects)
@@ -36,25 +44,33 @@ class ObjectsBoundingBoxConditionalBuilder(ObjectsCenterPointsConditionalBuilder
         assert conditional.shape[0] == self.embedding_dim
         return [
             (object_triple[0], self.bbox_from_token_pair(object_triple[1], object_triple[2]))
-            for object_triple in object_triples if object_triple[0] != self.none
+            for object_triple in object_triples
+            if object_triple[0] != self.none
         ], crop_coordinates
 
-    def plot(self, conditional: LongTensor, label_for_category_no: Callable[[int], str], figure_size: Tuple[int, int],
-             line_width: int = 3, font_size: Optional[int] = None) -> Tensor:
-        plot = pil_image.new('RGB', figure_size, WHITE)
+    def plot(
+        self,
+        conditional: LongTensor,
+        label_for_category_no: Callable[[int], str],
+        figure_size: Tuple[int, int],
+        line_width: int = 3,
+        font_size: Optional[int] = None,
+    ) -> Tensor:
+        plot = pil_image.new("RGB", figure_size, WHITE)
         draw = pil_img_draw.Draw(plot)
         font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-            size=get_plot_font_size(font_size, figure_size)
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", size=get_plot_font_size(font_size, figure_size)
         )
         width, height = plot.size
         description, crop_coordinates = self.inverse_build(conditional)
         for (representation, bbox), color in zip(description, cycle(COLOR_PALETTE)):
             annotation = self.representation_to_annotation(representation)
-            class_label = label_for_category_no(annotation.category_no) + ' ' + additional_parameters_string(annotation)
+            class_label = (
+                label_for_category_no(annotation.category_no) + " " + additional_parameters_string(annotation)
+            )
             bbox = absolute_bbox(bbox, width, height)
             draw.rectangle(bbox, outline=color, width=line_width)
-            draw.text((bbox[0] + line_width, bbox[1] + line_width), class_label, anchor='la', fill=BLACK, font=font)
+            draw.text((bbox[0] + line_width, bbox[1] + line_width), class_label, anchor="la", fill=BLACK, font=font)
         if crop_coordinates is not None:
             draw.rectangle(absolute_bbox(crop_coordinates, width, height), outline=GRAY_75, width=line_width)
-        return convert_pil_to_tensor(plot) / 127.5 - 1.
+        return convert_pil_to_tensor(plot) / 127.5 - 1.0

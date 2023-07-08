@@ -5,33 +5,28 @@
 # for Denoising Diffusion GAN. To view a copy of this license, see the LICENSE file.
 # ---------------------------------------------------------------
 
+import argparse
 import os
 import shutil
-import argparse
 from functools import partial
-from omegaconf import OmegaConf
-
 from time import time
 
-import numpy as np
 import torch
+from omegaconf import OmegaConf
+
+import torch.nn.functional as F
+import torch.optim as optim
+import torchvision
+from accelerate import Accelerator
+from accelerate.utils import set_seed
+from datasets_prep import get_dataset
+from EMA import EMA
+from models import create_network
+from torchdiffeq import odeint_adjoint as odeint
 
 # faster training
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-from torchdiffeq import odeint_adjoint as odeint
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torchvision
-import torch.distributed as dist
-from torch.multiprocessing import Process
-
-from datasets_prep import get_dataset
-from models import create_network
-from EMA import EMA
-from accelerate import Accelerator
-from accelerate.utils import set_seed
 
 
 def copy_source(file, output_dir):
@@ -53,9 +48,7 @@ def get_weight(model):
 
 def sample_from_model(model, x_0):
     t = torch.tensor([1.0, 0.0], dtype=x_0.dtype, device="cuda")
-    fake_image = odeint(
-        model, x_0, t, atol=1e-5, rtol=1e-5, adjoint_params=model.func.parameters()
-    )
+    fake_image = odeint(model, x_0, t, atol=1e-5, rtol=1e-5, adjoint_params=model.func.parameters())
     return fake_image
 
 
@@ -87,9 +80,7 @@ def train(args):
     if args.use_grad_checkpointing and "DiT" in args.model_type:
         model.set_gradient_checkpointing()
 
-    first_stage_model = AutoencoderKL.from_pretrained(
-        args.pretrained_autoencoder_ckpt
-    ).to(device, dtype=dtype)
+    first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device, dtype=dtype)
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
     for param in first_stage_model.parameters():
@@ -103,13 +94,9 @@ def train(args):
     if args.use_ema:
         optimizer = EMA(optimizer, ema_decay=args.ema_decay)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, args.num_epoch, eta_min=1e-5
-    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, eta_min=1e-5)
 
-    data_loader, model, optimizer, scheduler = accelerator.prepare(
-        data_loader, model, optimizer, scheduler
-    )
+    data_loader, model, optimizer, scheduler = accelerator.prepare(data_loader, model, optimizer, scheduler)
 
     exp = args.exp
     parent_dir = "./saved_info/latent_flow/{}".format(args.dataset)
@@ -161,11 +148,7 @@ def train(args):
             if is_latent_data:
                 z_0 = x_0 * args.scale_factor
             else:
-                z_0 = (
-                    first_stage_model.encode(x_0)
-                    .latent_dist.sample()
-                    .mul_(args.scale_factor)
-                )
+                z_0 = first_stage_model.encode(x_0).latent_dist.sample().mul_(args.scale_factor)
             # sample t
             t = torch.rand((z_0.size(0),), dtype=dtype, device=device)
             t = t.view(-1, 1, 1, 1)
@@ -208,9 +191,7 @@ def train(args):
                     sample_model = partial(model, y=y)
                     # sample_func = lambda t, x: model(t, x, y=y)
                     fake_sample = sample_from_model(sample_model, rand)[-1]
-                    fake_image = first_stage_model.decode(
-                        fake_sample / args.scale_factor
-                    ).sample
+                    fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
                 # torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
                 torchvision.utils.save_image(
                     fake_image,
@@ -249,14 +230,10 @@ def train(args):
 # %%
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("ddgan parameters")
-    parser.add_argument(
-        "--seed", type=int, default=1024, help="seed used for initialization"
-    )
+    parser.add_argument("--seed", type=int, default=1024, help="seed used for initialization")
 
     parser.add_argument("--resume", action="store_true", default=False)
-    parser.add_argument(
-        "--model_ckpt", type=str, default=None, help="Model ckpt to init from"
-    )
+    parser.add_argument("--model_ckpt", type=str, default=None, help="Model ckpt to init from")
 
     parser.add_argument(
         "--model_type",
@@ -280,15 +257,9 @@ if __name__ == "__main__":
         default=8,
         help="downsample rate of input image by the autoencoder",
     )
-    parser.add_argument(
-        "--scale_factor", type=float, default=0.18215, help="size of image"
-    )
-    parser.add_argument(
-        "--num_in_channels", type=int, default=3, help="in channel image"
-    )
-    parser.add_argument(
-        "--num_out_channels", type=int, default=3, help="in channel image"
-    )
+    parser.add_argument("--scale_factor", type=float, default=0.18215, help="size of image")
+    parser.add_argument("--num_in_channels", type=int, default=3, help="in channel image")
+    parser.add_argument("--num_out_channels", type=int, default=3, help="in channel image")
     parser.add_argument("--nf", type=int, default=256, help="channel of model")
     parser.add_argument(
         "--num_res_blocks",
@@ -311,9 +282,7 @@ if __name__ == "__main__":
         help="channel mult",
     )
     parser.add_argument("--dropout", type=float, default=0.0, help="drop-out rate")
-    parser.add_argument(
-        "--label_dim", type=int, default=0, help="label dimension, 0 if unconditional"
-    )
+    parser.add_argument("--label_dim", type=int, default=0, help="label dimension, 0 if unconditional")
     parser.add_argument(
         "--augment_dim",
         type=int,
@@ -334,26 +303,16 @@ if __name__ == "__main__":
     parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
     parser.add_argument("--resblock_updown", type=bool, default=False)
     parser.add_argument("--use_new_attention_order", type=bool, default=False)
-    parser.add_argument(
-        "--centered", action="store_false", default=True, help="-1,1 scale"
-    )
+    parser.add_argument("--centered", action="store_false", default=True, help="-1,1 scale")
     parser.add_argument("--resamp_with_conv", type=bool, default=True)
     parser.add_argument("--num_heads", type=int, default=4, help="number of head")
-    parser.add_argument(
-        "--num_head_upsample", type=int, default=-1, help="number of head upsample"
-    )
-    parser.add_argument(
-        "--num_head_channels", type=int, default=-1, help="number of head channels"
-    )
+    parser.add_argument("--num_head_upsample", type=int, default=-1, help="number of head upsample")
+    parser.add_argument("--num_head_channels", type=int, default=-1, help="number of head channels")
 
-    parser.add_argument(
-        "--pretrained_autoencoder_ckpt", type=str, default="stabilityai/sd-vae-ft-mse"
-    )
+    parser.add_argument("--pretrained_autoencoder_ckpt", type=str, default="stabilityai/sd-vae-ft-mse")
 
     # training
-    parser.add_argument(
-        "--exp", default="experiment_cifar_default", help="name of experiment"
-    )
+    parser.add_argument("--exp", default="experiment_cifar_default", help="name of experiment")
     parser.add_argument("--dataset", default="cifar10", help="name of dataset")
     parser.add_argument("--datadir", default="./data")
     parser.add_argument("--num_timesteps", type=int, default=200)
@@ -373,12 +332,8 @@ if __name__ == "__main__":
     parser.add_argument("--beta2", type=float, default=0.9, help="beta2 for adam")
     parser.add_argument("--no_lr_decay", action="store_true", default=False)
 
-    parser.add_argument(
-        "--use_ema", action="store_true", default=False, help="use EMA or not"
-    )
-    parser.add_argument(
-        "--ema_decay", type=float, default=0.9999, help="decay rate for EMA"
-    )
+    parser.add_argument("--use_ema", action="store_true", default=False, help="use EMA or not")
+    parser.add_argument("--ema_decay", type=float, default=0.9999, help="decay rate for EMA")
 
     parser.add_argument("--save_content", action="store_true", default=False)
     parser.add_argument(
@@ -387,9 +342,7 @@ if __name__ == "__main__":
         default=10,
         help="save content for resuming every x epochs",
     )
-    parser.add_argument(
-        "--save_ckpt_every", type=int, default=25, help="save ckpt every x epochs"
-    )
+    parser.add_argument("--save_ckpt_every", type=int, default=25, help="save ckpt every x epochs")
     parser.add_argument("--plot_every", type=int, default=5, help="plot every x epochs")
 
     args = parser.parse_args()

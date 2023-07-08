@@ -1,30 +1,36 @@
 import os
-import numpy as np
-import cv2
+
 import albumentations
+import cv2
+import numpy as np
+import torch
+from datasets_prep.coco import SegmentationBase  # for examples included in repo
 from PIL import Image
 from torch.utils.data import Dataset
-import torch
-from datasets_prep.coco import SegmentationBase # for examples included in repo
 
 
 class Examples(SegmentationBase):
     def __init__(self, size=256, random_crop=False, interpolation="bicubic"):
-        super().__init__(data_csv="data/ade20k_examples.txt",
-                         data_root="data/ade20k_images",
-                         segmentation_root="data/ade20k_segmentations",
-                         size=size, random_crop=random_crop,
-                         interpolation=interpolation,
-                         n_labels=151, shift_segmentation=False)
+        super().__init__(
+            data_csv="data/ade20k_examples.txt",
+            data_root="data/ade20k_images",
+            segmentation_root="data/ade20k_segmentations",
+            size=size,
+            random_crop=random_crop,
+            interpolation=interpolation,
+            n_labels=151,
+            shift_segmentation=False,
+        )
 
 
 # With semantic map and scene label
 class ADE20kBase(Dataset):
     def __init__(self, config=None, size=None, random_crop=False, interpolation="bicubic", crop_size=None):
         self.split = self.get_split()
-        self.n_labels = 151 # unknown + 150
-        self.data_csv = {"train": "dataset/ade20k/training.txt",
-                         "validation": "dataset/ade20k/validation.txt"}[self.split]
+        self.n_labels = 151  # unknown + 150
+        self.data_csv = {"train": "dataset/ade20k/training.txt", "validation": "dataset/ade20k/validation.txt"}[
+            self.split
+        ]
         self.data_root = "dataset/ade20k"
         with open(os.path.join(self.data_root, "sceneCategories.txt"), "r") as f:
             self.scene_categories = f.read().splitlines()
@@ -34,11 +40,10 @@ class ADE20kBase(Dataset):
         self._length = len(self.image_paths)
         self.labels = {
             "file_path_": [os.path.join(self.data_root, l.split(" ")[0]) for l in self.image_paths],
-            "segmentation_path_": [os.path.join(self.data_root, l.split(" ")[1]) for l in self.image_paths]
+            "segmentation_path_": [os.path.join(self.data_root, l.split(" ")[1]) for l in self.image_paths],
         }
-        
 
-        size = None if size is not None and size<=0 else size
+        size = None if size is not None and size <= 0 else size
         self.size = size
         if crop_size is None:
             self.crop_size = size if size is not None else None
@@ -51,11 +56,12 @@ class ADE20kBase(Dataset):
                 "bilinear": cv2.INTER_LINEAR,
                 "bicubic": cv2.INTER_CUBIC,
                 "area": cv2.INTER_AREA,
-                "lanczos": cv2.INTER_LANCZOS4}[self.interpolation]
-            self.image_rescaler = albumentations.SmallestMaxSize(max_size=self.size,
-                                                                 interpolation=self.interpolation)
-            self.segmentation_rescaler = albumentations.SmallestMaxSize(max_size=self.size,
-                                                                        interpolation=cv2.INTER_NEAREST)
+                "lanczos": cv2.INTER_LANCZOS4,
+            }[self.interpolation]
+            self.image_rescaler = albumentations.SmallestMaxSize(max_size=self.size, interpolation=self.interpolation)
+            self.segmentation_rescaler = albumentations.SmallestMaxSize(
+                max_size=self.size, interpolation=cv2.INTER_NEAREST
+            )
 
         if crop_size is not None:
             self.center_crop = not random_crop
@@ -86,7 +92,7 @@ class ADE20kBase(Dataset):
             image = processed["image"]
             segmentation = processed["mask"]
 
-        image = (image/127.5 - 1.0).astype(np.float32)
+        image = (image / 127.5 - 1.0).astype(np.float32)
         image = torch.from_numpy(image).permute(2, 0, 1)
         segmentation = torch.from_numpy(segmentation).long()
         return image, segmentation
@@ -95,8 +101,9 @@ class ADE20kBase(Dataset):
 class ADE20kTrain(ADE20kBase):
     # default to random_crop=True
     def __init__(self, config=None, size=None, random_crop=True, interpolation="bicubic", crop_size=None):
-        super().__init__(config=config, size=size, random_crop=random_crop,
-                          interpolation=interpolation, crop_size=crop_size)
+        super().__init__(
+            config=config, size=size, random_crop=random_crop, interpolation=interpolation, crop_size=crop_size
+        )
 
     def get_split(self):
         return "train"

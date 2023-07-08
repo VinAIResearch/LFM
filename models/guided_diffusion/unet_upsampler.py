@@ -1,23 +1,11 @@
 import torch as th
 import torch.nn as nn
-
-from .nn import (
-    conv_nd,
-    zero_module,
-    normalization,
-    timestep_embedding,
-)
-from .unet import (
-    TimestepEmbedSequential,
-    ResBlock,
-    AttentionBlock,
-    Downsample,
-    Upsample
-)
-
-from models.score_sde_pytorch.layerspp import GaussianFourierProjection
 from models.score_sde_pytorch.layers import default_init
+from models.score_sde_pytorch.layerspp import GaussianFourierProjection
 from utils.util import get_resize_fn
+
+from .nn import conv_nd, normalization, zero_module
+from .unet import AttentionBlock, Downsample, ResBlock, TimestepEmbedSequential, Upsample
 
 
 class UNetUpsamplerModel(nn.Module):
@@ -84,10 +72,7 @@ class UNetUpsamplerModel(nn.Module):
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
 
         ch = input_ch = int(channel_mult[0] * model_channels)
-        self.input_blocks = nn.ModuleList(
-            [TimestepEmbedSequential(
-                conv_nd(dims, in_channels, ch, 3, padding=1))]
-        )
+        self.input_blocks = nn.ModuleList([TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))])
         self._feature_size = ch
         input_block_chans = [ch]
         ds = 1
@@ -133,9 +118,7 @@ class UNetUpsamplerModel(nn.Module):
                             down=True,
                         )
                         if resblock_updown
-                        else Downsample(
-                            ch, conv_resample, dims=dims, out_channels=out_ch
-                        )
+                        else Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)
                     )
                 )
                 ch = out_ch
@@ -239,14 +222,14 @@ class UNetUpsamplerModel(nn.Module):
         for i, module in enumerate(self.time_embed):
             emb = module(emb)
             if i == 0:
-                 emb = th.cat([emb, aug_emb], dim=-1)
+                emb = th.cat([emb, aug_emb], dim=-1)
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
         h = th.cat([x, self.resize_fn(cond_signal)], dim=1)
-        
+
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
@@ -254,5 +237,5 @@ class UNetUpsamplerModel(nn.Module):
         for module in self.output_blocks:
             h = th.cat([h, hs.pop()], dim=1)
             h = module(h, emb)
-            
+
         return self.out(h), h, emb

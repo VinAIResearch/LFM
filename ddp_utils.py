@@ -15,13 +15,12 @@ def broadcast_params(params):
 
 
 def init_processes(rank, size, fn, args):
-    """ Initialize the distributed environment. """
-    os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = args.master_port
+    """Initialize the distributed environment."""
+    os.environ["MASTER_ADDR"] = args.master_address
+    os.environ["MASTER_PORT"] = args.master_port
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
-    dist.init_process_group(
-        backend='nccl', init_method='env://', rank=rank, world_size=size)
+    dist.init_process_group(backend="nccl", init_method="env://", rank=rank, world_size=size)
     fn(rank, gpu, args)
     dist.barrier()
     cleanup()
