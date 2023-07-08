@@ -185,7 +185,7 @@ Argument's files and checkpoints are provided below:
 
 > All attached links are made by an anonymous account.
 
-Please put downloaded pre-trained models in `saved_info/latent_flow/<DATASET>/<EXP>` directory where `<DATASET>` is defined as in [run.sh](run.sh).
+Please put downloaded pre-trained models in `saved_info/latent_flow/<DATASET>/<EXP>` directory where `<DATASET>` is defined as in [bash_scripts/run.sh](./bash_scripts/run.sh).
 
 <details>
 <summary>Utilities</summary>
