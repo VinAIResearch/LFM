@@ -1,8 +1,10 @@
 # Downstream tasks
-## Data preparation
-Image inpainting: We follow the training and evaluating protocol from paper: [MAT: Mask-Aware Transformer for Large Hole Image Inpainting](https://github.com/fenglinglwb/MAT)
 
-Semantic synthesis: For CelebHQ 256, we use the first 27,000 images for training and 3,000 images for testing.
+## Data preparation
+
+Image inpainting: We follow the training and evaluating protocol from paper: [MAT: Mask-Aware Transformer for Large Hole Image Inpainting](https://github.com/fenglinglwb/MAT).
+
+Semantic synthesis: For CelebHQ 256, we use the first `27,000` images for training and `3,000` images for testing.
 
 ## Training
 

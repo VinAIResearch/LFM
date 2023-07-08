@@ -8,9 +8,14 @@
 """Model architectures and preconditioning schemes used in the paper
 "Elucidating the Design Space of Diffusion-Based Generative Models"."""
 
+from functools import partial
+
 import numpy as np
 import torch
 from torch.nn.functional import silu
+
+from .DiT import LabelEmbedder
+
 
 # use torch.scaled_dot_product_attention where possible
 _HAS_FUSED_ATTN = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
@@ -134,7 +139,7 @@ class UNetBlock(torch.nn.Module):
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
         resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
-        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_mem_efficient_attn=False,
+        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_mem_efficient_attn=False
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -162,7 +167,7 @@ class UNetBlock(torch.nn.Module):
             self.qkv = Conv2d(in_channels=out_channels, out_channels=out_channels*3, kernel=1, **(init_attn if init_attn is not None else init))
             self.proj = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=1, **init_zero)
 
-    def forward(self, x, emb):
+    def forward(self, x, emb, **kwargs):
         orig = x
         x = self.conv0(silu(self.norm0(x)))
 
@@ -183,10 +188,130 @@ class UNetBlock(torch.nn.Module):
                 w = AttentionOp.apply(q, k)
                 a = torch.einsum('nqk,nck->ncq', w, v)
             else:
+                q = q.permute(0,2,1) # (b, s, d)
+                k = k.permute(0,2,1) # (b, t, d)
+                v = v.permute(0,2,1) # (b, t, d)
                 a = torch.nn.functional.scaled_dot_product_attention(q, k, v, dropout_p=0.)
             x = self.proj(a.reshape(*x.shape)).add_(x)
             x = x * self.skip_scale
         return x
+
+
+class UNetBlockWithContext(UNetBlock):
+    def __init__(self,
+        in_channels, out_channels, emb_channels, context_channels, up=False, down=False, attention=False,
+        num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
+        resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
+        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_mem_efficient_attn=False):
+        super().__init__(in_channels, out_channels, emb_channels, up, down, attention=False, 
+        dropout=dropout, skip_scale=skip_scale, eps=eps,
+        resample_filter=resample_filter, resample_proj=resample_proj, adaptive_scale=adaptive_scale,
+        init=init, init_zero=init_zero, init_attn=init_attn)
+        self.use_transformer = attention
+        if self.use_transformer:
+            self.transformer = TransformerBlock(out_channels, context_channels,
+                num_heads=num_heads, channels_per_head=channels_per_head, eps=eps,
+                init=init, init_zero=init_zero, init_attn=init_attn, use_mem_efficient_attn=use_mem_efficient_attn)
+
+    def forward(self, x, emb, context):
+        orig = x
+        x = self.conv0(silu(self.norm0(x)))
+
+        params = self.affine(emb).unsqueeze(2).unsqueeze(3).to(x.dtype)
+        if self.adaptive_scale:
+            scale, shift = params.chunk(chunks=2, dim=1)
+            x = silu(torch.addcmul(shift, self.norm1(x), scale + 1))
+        else:
+            x = silu(self.norm1(x.add_(params)))
+
+        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training))
+        x = x.add_(self.skip(orig) if self.skip is not None else orig)
+        x = x * self.skip_scale
+
+        if self.use_transformer:
+            x = self.transformer(x, context)
+            x = x * self.skip_scale
+        return x
+
+
+class CrossAttention(torch.nn.Module):
+    def __init__(self,
+        query_channels, context_channels=None,
+        num_heads=None, channels_per_head=64, eps=1e-5,
+        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_mem_efficient_attn=False,
+    ):
+        super().__init__()
+        self.num_heads = num_heads if num_heads is not None else query_channels // channels_per_head
+        self.use_mem_efficient_attn = use_mem_efficient_attn
+        context_channels = query_channels if context_channels is None else context_channels
+
+        self.q = Conv2d(in_channels=query_channels, out_channels=query_channels, kernel=1, **(init_attn if init_attn is not None else init))
+        self.k = Conv2d(in_channels=context_channels, out_channels=query_channels, kernel=1, **(init_attn if init_attn is not None else init))
+        self.v = Conv2d(in_channels=context_channels, out_channels=query_channels, kernel=1, **(init_attn if init_attn is not None else init))
+        self.proj = Conv2d(in_channels=query_channels, out_channels=query_channels, kernel=1, **init_zero)
+
+
+    def forward(self, x, context=None):
+        q = self.q(x).reshape(x.shape[0] * self.num_heads, x.shape[1] // self.num_heads, -1)
+        context = x if context is None else context
+        k = self.k(context).reshape(context.shape[0] * self.num_heads, x.shape[1] // self.num_heads, -1)
+        v = self.v(context).reshape(context.shape[0] * self.num_heads, x.shape[1] // self.num_heads, -1)
+        if not self.use_mem_efficient_attn and not _HAS_FUSED_ATTN:
+            w = AttentionOp.apply(q, k)
+            a = torch.einsum('nqk,nck->ncq', w, v)
+        else:
+            q = q.permute(0,2,1) # (b, s, d)
+            k = k.permute(0,2,1) # (b, t, d)
+            v = v.permute(0,2,1) # (b, t, d)
+
+            a = torch.nn.functional.scaled_dot_product_attention(q, k, v, dropout_p=0.)
+            a = a.permute(0, 2, 1)
+        x = self.proj(a.reshape(*x.shape))
+        return x
+
+
+class FeedForward(torch.nn.Module):
+    def __init__(self, in_channels, out_channels=None, channel_mult=4,
+        init=dict()):
+        super().__init__()
+        inner_channels = int(in_channels * channel_mult)
+        if out_channels is None:
+            out_channels = in_channels
+        self.layer0 = Linear(in_features=in_channels, out_features=inner_channels, **init)
+        self.layer1 = Linear(in_features=inner_channels, out_features=out_channels, **init)
+
+    def forward(self, x):
+        x = x.view(x.size(0), x.size(1), -1).permute(0,2,1)
+        x = silu(self.layer0(x))
+        x = self.layer1(x)
+        return x.permute(0,2,1).view(x.size(0), -1, int(x.size(1)**.5), int(x.size(1)**.5))
+
+
+class TransformerBlock(torch.nn.Module):
+    def __init__(self, in_channels, context_channels,
+    num_heads=None, channels_per_head=64, eps=1e-5,
+    init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_mem_efficient_attn=False):
+        super().__init__()
+        self.attn1 = CrossAttention(in_channels, None,
+                        num_heads, channels_per_head, eps,
+                        init, init_zero, init_attn, use_mem_efficient_attn)
+        self.attn2 = CrossAttention(in_channels, context_channels,
+                        num_heads, channels_per_head, eps,
+                        init, init_zero, init_attn, use_mem_efficient_attn)
+        self.ff    = FeedForward(in_channels, init=init)
+
+        self.norm1 = GroupNorm(num_channels=in_channels, eps=eps)
+        self.norm2 = GroupNorm(num_channels=in_channels, eps=eps)
+        self.norm3 = GroupNorm(num_channels=in_channels, eps=eps)
+
+    def forward(self, x, context=None):
+        if context.dim() == 2:
+            context = context[...,None,None]
+        x = self.attn1(self.norm1(x)) + x
+        x = self.attn2(self.norm2(x), context=context) + x
+        x = self.ff(self.norm3(x)) + x
+        return x
+
 
 #----------------------------------------------------------------------------
 # Timestep embedding used in the DDPM++ and ADM architectures.
@@ -387,11 +512,13 @@ class DhariwalUNet(torch.nn.Module):
         attn_resolutions    = [32,16,8],    # List of resolutions with self-attention.
         dropout             = 0.10,         # List of resolutions with self-attention.
         label_dropout       = 0,            # Dropout probability of class labels for classifier-free guidance.
+        use_context         = False,        # Use context embeddings in UNetBlock
     ):
         super().__init__()
         self.label_dim = label_dim
         self.label_dropout = label_dropout
         # self.in_channels = in_channels
+        self.use_context = use_context
         emb_channels = model_channels * channel_mult_emb
         init = dict(init_mode='kaiming_uniform', init_weight=np.sqrt(1/3), init_bias=np.sqrt(1/3))
         init_zero = dict(init_mode='kaiming_uniform', init_weight=0, init_bias=0)
@@ -402,7 +529,12 @@ class DhariwalUNet(torch.nn.Module):
         self.map_augment = Linear(in_features=augment_dim, out_features=model_channels, bias=False, **init_zero) if augment_dim else None
         self.map_layer0 = Linear(in_features=model_channels, out_features=emb_channels, **init)
         self.map_layer1 = Linear(in_features=emb_channels, out_features=emb_channels, **init)
-        self.map_label = Linear(in_features=label_dim, out_features=emb_channels, bias=False, init_mode='kaiming_normal', init_weight=np.sqrt(label_dim)) if label_dim else None
+        if self.use_context:
+            self.map_label = LabelEmbedder(label_dim, emb_channels, label_dropout) if label_dim else None
+            resblock = partial(UNetBlockWithContext, context_channels=emb_channels)
+        else:
+            self.map_label = Linear(in_features=label_dim, out_features=emb_channels, bias=False, init_mode='kaiming_normal', init_weight=np.sqrt(label_dim)) if label_dim else None
+            resblock = UNetBlock
 
         # Encoder.
         self.enc = torch.nn.ModuleDict()
@@ -414,11 +546,11 @@ class DhariwalUNet(torch.nn.Module):
                 cout = model_channels * mult
                 self.enc[f'{res}x{res}_conv'] = Conv2d(in_channels=cin, out_channels=cout, kernel=3, **init)
             else:
-                self.enc[f'{res}x{res}_down'] = UNetBlock(in_channels=cout, out_channels=cout, down=True, **block_kwargs)
+                self.enc[f'{res}x{res}_down'] = resblock(in_channels=cout, out_channels=cout, down=True, **block_kwargs)
             for idx in range(num_blocks):
                 cin = cout
                 cout = model_channels * mult
-                self.enc[f'{res}x{res}_block{idx}'] = UNetBlock(in_channels=cin, out_channels=cout, attention=(res in attn_resolutions), **block_kwargs)
+                self.enc[f'{res}x{res}_block{idx}'] = resblock(in_channels=cin, out_channels=cout, attention=(res in attn_resolutions), **block_kwargs)
         skips = [block.out_channels for block in self.enc.values()]
 
         # Decoder.
@@ -426,14 +558,14 @@ class DhariwalUNet(torch.nn.Module):
         for level, mult in reversed(list(enumerate(channel_mult))):
             res = img_resolution >> level
             if level == len(channel_mult) - 1:
-                self.dec[f'{res}x{res}_in0'] = UNetBlock(in_channels=cout, out_channels=cout, attention=True, **block_kwargs)
-                self.dec[f'{res}x{res}_in1'] = UNetBlock(in_channels=cout, out_channels=cout, **block_kwargs)
+                self.dec[f'{res}x{res}_in0'] = resblock(in_channels=cout, out_channels=cout, attention=True, **block_kwargs)
+                self.dec[f'{res}x{res}_in1'] = resblock(in_channels=cout, out_channels=cout, **block_kwargs)
             else:
-                self.dec[f'{res}x{res}_up'] = UNetBlock(in_channels=cout, out_channels=cout, up=True, **block_kwargs)
+                self.dec[f'{res}x{res}_up'] = resblock(in_channels=cout, out_channels=cout, up=True, **block_kwargs)
             for idx in range(num_blocks + 1):
                 cin = cout + skips.pop()
                 cout = model_channels * mult
-                self.dec[f'{res}x{res}_block{idx}'] = UNetBlock(in_channels=cin, out_channels=cout, attention=(res in attn_resolutions), **block_kwargs)
+                self.dec[f'{res}x{res}_block{idx}'] = resblock(in_channels=cin, out_channels=cout, attention=(res in attn_resolutions), **block_kwargs)
         self.out_norm = GroupNorm(num_channels=cout)
         self.out_conv = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3, **init_zero)
 
@@ -445,28 +577,33 @@ class DhariwalUNet(torch.nn.Module):
             emb = emb + self.map_augment(augment_labels)
         emb = silu(self.map_layer0(emb))
         emb = self.map_layer1(emb)
-        if self.map_label is not None and y is not None:
+
+        context = None
+        if self.map_label is not None and y is not None and not self.use_context:
             tmp = torch.nn.functional.one_hot(y, self.label_dim).float()
             if self.training and self.label_dropout:
                 tmp = tmp * (torch.rand([x.shape[0], 1], device=x.device) >= self.label_dropout).to(tmp.dtype)
             elif drop_half_label:
                 tmp[len(tmp) // 2:] *= 0.
             emb = emb + self.map_label(tmp)
+        elif self.use_context:
+            context = self.map_label(y, self.training)
+
         emb = silu(emb)
 
         # Encoder.
         skips = []
         for block in self.enc.values():
-            x = block(x, emb) if isinstance(block, UNetBlock) else block(x)
+            x = block(x, emb, context=context) if isinstance(block, UNetBlock) else block(x)
             skips.append(x)
 
         # Decoder.
         for block in self.dec.values():
             if x.shape[1] != block.in_channels:
                 x = torch.cat([x, skips.pop()], dim=1)
-            x = block(x, emb)
+            x = block(x, emb, context=context)
         x = self.out_conv(silu(self.out_norm(x)))
-        return x 
+        return x
 
     def forward_with_cfg(self, noise_labels, x, y=None, augment_labels=None, cfg_scale=1.0, **kwargs):
         """
@@ -483,6 +620,7 @@ class DhariwalUNet(torch.nn.Module):
         eps = torch.cat([half_eps, half_eps], dim=0)
         # return torch.cat([eps, rest], dim=1)
         return eps
+
 
 def get_edm_network(config):
     if config.model_type == "ncsn++":
@@ -505,7 +643,7 @@ def get_edm_network(config):
             decoder_type='standard',
             resample_filter=[1,3,3,1],
         )
-    
+
     elif config.model_type == "ddpm++":
         model = SongUNet(
             img_resolution=config.image_size//config.f,
@@ -541,5 +679,22 @@ def get_edm_network(config):
             attn_resolutions=config.attn_resolutions,
             dropout=config.dropout,
             label_dropout=config.label_dropout,
+        )
+
+    elif config.model_type == "adm_context":
+        model = DhariwalUNet(
+            img_resolution=config.image_size//config.f,
+            in_channels=config.num_in_channels,
+            out_channels=config.num_out_channels,
+            label_dim=config.label_dim,
+            augment_dim=0,
+            model_channels=config.nf,
+            channel_mult=config.ch_mult,
+            channel_mult_emb=4,
+            num_blocks=config.num_res_blocks,
+            attn_resolutions=config.attn_resolutions,
+            dropout=config.dropout,
+            label_dropout=config.label_dropout,
+            use_context=True,
         )
     return model
