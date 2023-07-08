@@ -30,15 +30,24 @@
   <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   <link rel="stylesheet" href="./static/css/index.css">
-  <link rel="icon" href="./static/images/favicon.svg">
+  <link rel="icon" href="./static/images/favicon.png">
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script defer src="./static/js/fontawesome.all.min.js"></script>
   <script src="./static/js/bulma-carousel.min.js"></script>
   <script src="./static/js/bulma-slider.min.js"></script>
   <script src="./static/js/index.js"></script>
-  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-  <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js"></script>
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Register.StartupHook('TeX Jax Ready', function () {
+          MathJax.InputJax.TeX.prefilterHooks.Add(function (data) {
+            data.math = data.math.replace('<br/>', '\\');
+          });
+        });
+  </script>
+  </script>
+  <script type="text/javascript" async
+    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML">
+    </script>
 
 </head>
 
@@ -90,7 +99,7 @@
       <div class="container is-max-desktop">
         <div class="columns is-centered">
           <div class="column has-text-centered">
-            <h1 class="title is-1 publication-title">Flow matching in Latent Space</h1>
+            <h1 class="title is-1 publication-title">Flow Matching in Latent Space</h1>
             <div class="is-size-5 publication-authors">
               <span class="author-block">
                 <a href="https://quandao10.github.io/">Quan Dao*</a><sup>1</sup>&emsp;
@@ -107,7 +116,7 @@
             </div>
 
             <div class="is-size-5 publication-authors">
-              <span class="author-block"><sup>1</sup>VinAI Research</span>
+              <span class="author-block"><sup>1</sup>VinAI Research</span> &emsp;
               <span class="author-block"><sup>2</sup>National University of Singapore</span>
             </div>
 
@@ -180,21 +189,23 @@
       <div class="hero-body">
         <img src="./static/images/archi.svg" class="framework" />
         <!-- has-text-centered -->
-        <h2 class="subtitle has-text-centered">
+        <h3 class="subtitle has-text-centered">
           <div class="content has-text-justified">
             <p>
-              Input data is first encoded to produce the latent vector, which is used to trained an velocity estimator
-              of the transformation from a standard normal distribution to the
-              target latent distribution.
+              Input data is first encoded to produce the latent vector \( z_0 \) which is used to trained an velocity
+              estimator
+              of the transformation from a standard normal distribution \( p(z_1) = \mathcal{N}(0, \mathbf{I}) \) to the
+              target latent distribution \( p(z_0) \).
             </p>
             <p>
-              Sampling process starts from random noise $z_1$, the trained network is used to predict the
+              Sampling process starts from random noise \( z_1 \), the trained network is used to predict the
               velocity towards the target latent distribution
-              $p(z_0)$ through numerical integration. Finally, $z_0$ is decoded to generate the corresponding image.
+              \( p(z_0) \) through numerical integration. Finally, \( z_0 \) is decoded to generate the corresponding
+              image.
             </p>
 
           </div>
-        </h2>
+        </h3>
       </div>
     </div>
   </section>
@@ -204,47 +215,73 @@
     <div class="hero-body">
       <div class="container">
         <div id="results-carousel" class="carousel results-carousel">
-          <div class="item item-steve">
-            <video poster="" id="steve" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/steve.mp4" type="video/mp4">
-            </video>
+          <div class="item item-starfish">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls327_cfg4.0.jpeg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Starfish' (327)
+              </div>
+            </div>
           </div>
-          <div class="item item-chair-tp">
-            <video poster="" id="chair-tp" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/chair-tp.mp4" type="video/mp4">
-            </video>
+          <div class="item item-macaw">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls88_cfg4.0.jpg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Macaw' (88)
+              </div>
+            </div>
           </div>
-          <div class="item item-shiba">
-            <video poster="" id="shiba" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/shiba.mp4" type="video/mp4">
-            </video>
+          <div class="item item-golden-retriever">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls207_cfg4.0.jpg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Golden retriever' (207)
+              </div>
+            </div>
           </div>
-          <div class="item item-fullbody">
-            <video poster="" id="fullbody" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/fullbody.mp4" type="video/mp4">
-            </video>
+          <div class="item item-boathouse">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls449_cfg4.0.jpg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Boathouse' (449)
+              </div>
+            </div>
           </div>
-          <div class="item item-blueshirt">
-            <video poster="" id="blueshirt" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/blueshirt.mp4" type="video/mp4">
-            </video>
+          <div class="item item-mushroom">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls947_cfg4.0.jpg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Mushroom' (947)
+              </div>
+            </div>
           </div>
-          <div class="item item-mask">
-            <video poster="" id="mask" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/mask.mp4" type="video/mp4">
-            </video>
+          <div class="item item-cliff">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls972_cfg4.0.jpg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Cliff' (972)
+              </div>
+            </div>
           </div>
-          <div class="item item-coffee">
-            <video poster="" id="coffee" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/coffee.mp4" type="video/mp4">
-            </video>
-          </div>
-          <div class="item item-toby">
-            <video poster="" id="toby" autoplay controls muted loop playsinline height="100%">
-              <source src="./static/videos/toby2.mp4" type="video/mp4">
-            </video>
+          <div class="item item-coral-reef">
+            <img src="static/images/samples_imagenet_256_dopri5_1e-05_1e-05_cls973_cfg4.0.jpg"
+              class="interpolation-image" />
+            <div class="card-content slider-text" style="background-color: rgba(0,0,0,0.1)">
+              <div class="is-size-5 has-text-centered">
+                Class: 'Coral reef' (973)
+              </div>
+            </div>
           </div>
         </div>
+      </div><br>
+      <div class="content has-text-centered">
+        Class-conditional image generation on ImageNet
       </div>
     </div>
   </section>
@@ -276,29 +313,88 @@
       <!--/ Abstract. -->
 
       <!-- Paper video. -->
-      <div class="columns is-centered has-text-centered">
+      <!-- <div class="columns is-centered has-text-centered">
         <div class="column is-four-fifths">
-          <h2 class="title is-3">Video</h2>
+          <h2 class="title is-3">Unconditional Generation</h2>
           <div class="publication-video">
             <iframe src="https://www.youtube.com/embed/MrKrnHhk8IA?rel=0&amp;showinfo=0" frameborder="0"
               allow="autoplay; encrypted-media" allowfullscreen></iframe>
           </div>
         </div>
-      </div>
+      </div> -->
       <!--/ Paper video. -->
     </div>
   </section>
 
 
+  <section class="section" id="motivation">
+    <div class="container is-max-desktop content">
+      <div class="columns is-centered">
+        <div class="column is-full-width">
+          <!-- Motivation -->
+          <h2 class="title is-3">Motivation</h2>
+          <div class="content has-text-justified">
+            <p>
+              Flow Matching (FM) has revolutionized the training of continuous normalizing flows (CNF) by introducing
+              a
+              simulation-free approach. Recent works, based on optimal transport theory, simplifies the training
+              objective by assuming a constant velocity field
+              between data and noise. This simplification results in straighter probability paths compared to the
+              high-curvature paths in diffusion models, making FM an efficient approach for
+              training continuous normalizing flows (CNF).
+            </p>
+            <p>
+              However, FM is still in its early stages and not yet ready for high-resolution image synthesis due to
+              its
+              costly ODE sampling process. Our approach represents a pioneering effort to thoroughly integrate and
+              study latent representations for flow-matching models, with the aim of enhancing both scalability and
+              performance.
+            </p>
+            <p>
+              Besides, the application of flow-based models in class-conditional
+              generation remain unexplored. Hence, we introduce classifier-free velocity field, inspired by the concept
+              of classifier-free guidance in diffusion models. Despite employing the same technique, our approach
+              distinguishes itself by relying on a velocity field instead of noise, leading to a novel and distinctive
+              method for class-conditional generation. Additionally, our method supports different types of conditions,
+              enabling tasks such as image inpainting and mask-to-image generation.
+            </p>
+
+          </div>
+
+          <h3 class="title is-4">Why opt for the latent space?</h3>
+          <div class="content has-text-justified">
+            <p>
+              <strong>Efficient computing:</strong> The most compelling advantage of the latent space is its compact
+              representation,
+              which enables smaller
+              spatial dimensions. This property greatly benefits high-resolution synthesis by reducing the
+              computational cost associated with evaluating numerical solvers at each step.
+            </p>
+            <p>
+              <strong>Expressivity:</strong> As found in prior latent-based diffusion models, training a generative
+              model on latent
+              variables typically lead to the improvement in expressivity, thereby enhancing model performance. Based
+              upon these findings, we expect that our model, through the combination of FM and a
+              carefully selected latent framework, will exhibit heightened expressivity.
+            </p>
+            <p>
+              As a result, the latent
+              space empowers efficient training and sampling while enabling the generation of high-quality outputs.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   <section class="section">
     <div class="container is-max-desktop">
-
       <div class="columns is-centered">
-
         <!-- Visual Effects. -->
-        <div class="column">
+        <!-- <div class="column">
           <div class="content">
-            <h2 class="title is-3">Visual Effects</h2>
+            <h2 class="title is-3">Image Inpainting</h2>
             <p>
               Using <i>nerfies</i> you can create fun visual effects. This Dolly zoom effect
               would be impossible without nerfies since it would require going through a wall.
@@ -307,12 +403,12 @@
               <source src="./static/videos/dollyzoom-stacked.mp4" type="video/mp4">
             </video>
           </div>
-        </div>
-        <!--/ Visual Effects. -->
+        </div> -->
+        <!-- / Visual Effects. -->
 
         <!-- Matting. -->
-        <div class="column">
-          <h2 class="title is-3">Matting</h2>
+        <!-- <div class="column">
+          <h2 class="title is-3">Semantic Synthesis</h2>
           <div class="columns is-centered">
             <div class="column content">
               <p>
@@ -325,30 +421,28 @@
             </div>
 
           </div>
-        </div>
-      </div>
-      <!--/ Matting. -->
+        </div> -->
+        <!-- </div> -->
+        <!--/ Matting. -->
 
-      <!-- Animation. -->
-      <div class="columns is-centered">
+        <!-- Method. -->
         <div class="column is-full-width">
-          <h2 class="title is-3">Animation</h2>
+          <h2 class="title is-3">Method</h2>
 
           <!-- Interpolating. -->
-          <h3 class="title is-4">Interpolating states</h3>
+          <h3 class="title is-4">Unconditional model</h3>
           <div class="content has-text-justified">
             <p>
-              We can also animate the scene by interpolating the deformation latent codes of two input
-              frames. Use the slider here to linearly interpolate between the left frame and the right
-              frame.
+              The training and sampling procedure of unconditional model are described as follow.
             </p>
-          </div>
-          <div class="columns is-vcentered interpolation-panel">
-            <div class="column is-3 has-text-centered">
-              <img src="./static/images/interpolate_start.jpg" class="interpolation-image"
-                alt="Interpolate start reference image." />
-              <p>Start Frame</p>
+            <div class="content has-text-centered">
+              <figure>
+                <img src="./static/images/uncond_algorithms.jpeg" class="interpolation-image" />
+                <!-- <figcaption>Fig 1. Pseudocode of unconditional model</figcaption> -->
+              </figure>
             </div>
+          </div>
+          <!-- <div class="columns is-vcentered interpolation-panel">
             <div class="column interpolation-video-column">
               <div id="interpolation-image-wrapper">
                 Loading...
@@ -357,67 +451,129 @@
                 value="0" type="range">
             </div>
             <div class="column is-3 has-text-centered">
-              <img src="./static/images/interpolate_end.jpg" class="interpolation-image"
+              <img src="./static/images/interpolate_end.jpg" class="interpolation-image-wrapper"
                 alt="Interpolation end reference image." />
               <p class="is-bold">End Frame</p>
             </div>
-          </div>
-          <br />
+          </div> -->
+          <!-- <br /> -->
           <!--/ Interpolating. -->
 
           <!-- Re-rendering. -->
-          <h3 class="title is-4">Re-rendering the input video</h3>
+          <h3 class="title is-4">Class-conditional model</h3>
           <div class="content has-text-justified">
             <p>
-              Using <span class="dnerf">Nerfies</span>, you can re-render a video from a novel
-              viewpoint such as a stabilized camera by playing back the training deformations.
+              Unlike unconditional model, class-conditional model requires an extra class label in the training
+              procedure. During training, we also incorporate the training of unconditional model with probability
+              \( p_{u} \) (e.g. 0.1) to preserve generation diversity while aleviating the overfitting problem.
+
             </p>
           </div>
           <div class="content has-text-centered">
-            <video id="replay-video" controls muted preload playsinline width="75%">
+            <figure>
+              <img src="./static/images/cond_algorithms.jpg" class="interpolation-image" />
+              <!-- <figcaption>Fig 2. Pseudocode of conditional model</figcaption> -->
+            </figure>
+            <!-- <video id="replay-video" controls muted preload playsinline width="75%">
               <source src="./static/videos/replay.mp4" type="video/mp4">
-            </video>
+            </video> -->
           </div>
           <!--/ Re-rendering. -->
 
         </div>
+        <!--/ Method. -->
+
       </div>
-      <!--/ Animation. -->
+  </section>
 
-
-      <!-- Concurrent Work. -->
+  <section class="section">
+    <div class="container is-max-desktop">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Downstream tasks</h2>
+      </div>
       <div class="columns is-centered">
-        <div class="column is-full-width">
-          <h2 class="title is-3">Related Links</h2>
-
-          <div class="content has-text-justified">
-            <p>
-              There's a lot of excellent work that was introduced around the same time as ours.
-            </p>
-            <p>
-              <a href="https://arxiv.org/abs/2104.09125">Progressive Encoding for Neural Optimization</a> introduces an
-              idea similar to our windowed position encoding for coarse-to-fine optimization.
-            </p>
-            <p>
-              <a href="https://www.albertpumarola.com/research/D-NeRF/index.html">D-NeRF</a> and <a
-                href="https://gvv.mpi-inf.mpg.de/projects/nonrigid_nerf/">NR-NeRF</a>
-              both use deformation fields to model non-rigid scenes.
-            </p>
-            <p>
-              Some works model videos with a NeRF by directly modulating the density, such as <a
-                href="https://video-nerf.github.io/">Video-NeRF</a>, <a
-                href="https://www.cs.cornell.edu/~zl548/NSFF/">NSFF</a>, and <a
-                href="https://neural-3d-video.github.io/">DyNeRF</a>
-            </p>
-            <p>
-              There are probably many more by the time you are reading this. Check out <a
-                href="https://dellaert.github.io/NeRF/">Frank Dellart's survey on recent NeRF papers</a>, and <a
-                href="https://github.com/yenchenlin/awesome-NeRF">Yen-Chen Lin's curated list of NeRF papers</a>.
-            </p>
+        <!-- Inpainting. -->
+        <div class="column">
+          <div class="content">
+            <figure>
+              <img src="./static/images/inpainting.png" class="interpolation-image" />
+              <figcaption>Inpainting</figcaption>
+            </figure>
           </div>
         </div>
+        <!-- / Inpainting. -->
+
+        <!-- Matting. -->
+        <div class="column">
+          <div class="content">
+            <figure>
+              <img src="./static/images/mask-image.png" class="interpolation-image" />
+              <figcaption>Mask-to-image</figcaption>
+            </figure>
+          </div>
+        </div>
+        </div><br>
+        <div class="content has-text-centered">
+          The first row is the input images, the second row is our generated images and the last row is the reference images.
+        </div>
       </div>
-      <!--/ Concurrent Work. -->
+    </div>
+  </section>
+
+  <section class="section" id="bound">
+    <div class="container is-max-desktop content">
+      <h2 class="title">Theoretical analysis: Bounding estimation error</h2>
+      <div class="content has-text-justified">
+        We have shown that minimizing the FM objective on latent space controls the Wasserstein distance between the
+        target density \( p_0 \) and the reconstructed density \( \hat{p}_0 \), which coincides with Fréchet inception
+        distance (FID), a common metric for image generation.
+        This means that our latent flow matching is guaranteed to control this metric, given reasonable estimation of \(
+        \hat{v}(\mathbf{z}_t, t) \). Nonetheless, the analysis also suggests that the quality of latent flow matching
+        depends on the constants that define the expressivity of the decoders and encoders, which has been observed in
+        prior research on generative modeling in latent space.
+
+        <img src="./static/images/bound.jpeg" class="interpolation-image" />
+
+
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="Related">
+    <div class="container is-max-desktop content">
+      <h2 class="title">Related Works</h2>
+      <div class="content has-text-justified">
+        <ul>
+
+          <li>Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, Matthew Le. <a
+              href="https://arxiv.org/abs/2210.02747"> Flow Matching for Generative Modeling</a>, ICLR 2023
+            (Notable top 25%).</li><br>
+
+          <li>Xingchao Liu, Chengyue Gong, Qiang Liu. <a href="https://arxiv.org/abs/2209.03003"> Flow Straight
+              and
+              Fast: Learning to Generate and Transfer Data with Rectified Flow</a>, ICLR 2023
+            (Notable top 25%).</li><br>
+
+          <li>Arash Vahdat, Karsten Kreis, Jan Kautz. <a href="https://arxiv.org/abs/2106.05931"> Score-based Generative
+              Modeling in Latent Space</a>, NeurIPS 2021.</li><br>
+
+          <li>Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, Björn Ommer. <a
+              href="https://arxiv.org/abs/2106.05931"> High-Resolution Image
+              Synthesis with Latent Diffusion Models</a>, CVPR 2022.</li><br>
+
+
+          <li>Jonathan Ho, Tim Salimans. <a href="https://arxiv.org/abs/2207.12598"> Classifier-Free Diffusion
+              Guidance</a>, NeurIPS 2021 Workshop on Deep Generative Models and Downstream Applications.</li><br>
+
+          <li>Prafulla Dhariwal, Prafulla_Dhariwal1, Alexander Quinn Nichol. <a href="https://arxiv.org/abs/2105.05233">
+              Diffusion Models Beat GANs on Image Synthesis</a>, NeurIPS
+            2021 (Spotlight).</li><br>
+
+          <li>William Peebles, Saining Xie. <a href="https://arxiv.org/abs/2212.09748"> Scalable Diffusion Models
+              with Transformers</a>, arXiv preprint arXiv:2212.09748.</li><br>
+
+        </ul>
+      </div>
 
     </div>
   </section>
@@ -426,29 +582,35 @@
   <section class="section" id="BibTeX">
     <div class="container is-max-desktop content">
       <h2 class="title">BibTeX</h2>
-      <pre><code>@article{park2021nerfies,
-  author    = {Park, Keunhong and Sinha, Utkarsh and Barron, Jonathan T. and Bouaziz, Sofien and Goldman, Dan B and Seitz, Steven M. and Martin-Brualla, Ricardo},
-  title     = {Nerfies: Deformable Neural Radiance Fields},
-  journal   = {ICCV},
-  year      = {2021},
-}</code></pre>
+      <code style="background-color:transparent;color:#EA48CA;">
+        @article{dao2023lfm<br>
+        &emsp;&emsp; author  = {Dao, Quan and Phung, Hao and Nguyen, Binh and Tran, Anh},<br>
+        &emsp;&emsp; title   = {Flow Matching in Latent Space},<br>
+        &emsp;&emsp; journal = {arXiv preprint arXiv:id},<br>
+        &emsp;&emsp; year    = {2023},<br>
+      }</code>
     </div>
   </section>
 
 
   <footer class="footer">
     <div class="container">
-      <div class="content has-text-centered">
+      <!-- <div class="content has-text-centered">
         <a class="icon-link" href="./static/videos/nerfies_paper.pdf">
           <i class="fas fa-file-pdf"></i>
         </a>
         <a class="icon-link" href="https://github.com/keunhong" class="external-link" disabled>
           <i class="fab fa-github"></i>
         </a>
-      </div>
+      </div> -->
       <div class="columns is-centered">
         <div class="column is-8">
           <div class="content">
+            <p>
+              This website is licensed under a <a rel="license"
+                href="http://creativecommons.org/licenses/by-sa/4.0/">Creative
+                Commons Attribution-ShareAlike 4.0 International License</a>.
+            </p>
             <p>
               This page is borrowed from <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>.
             </p>
