@@ -212,10 +212,10 @@ Then run `bash run_test_ddp.sh` for unconditional generation and `bash run_test_
 <details>
 <summary>Computing stats for new dataset</summary>
 
-`compute_dataset_stat.py` is provided for this purpose.
+`pytorch_fid/compute_dataset_stat.py` is provided for this purpose.
 
 ```bash
-python compute_dataset_stat.py \
+python pytorch_fid/compute_dataset_stat.py \
   --dataset <dataset> --datadir <path_to_data> \
   --image_size <image_size> --save_path <path_to_save>
 ```
