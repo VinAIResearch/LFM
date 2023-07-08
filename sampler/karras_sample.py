@@ -18,14 +18,12 @@ def karras_sample(
     device=None,
     sigma_min=0.002,
     sigma_max=80,  # higher for highres?
-    rho=7.0,
     sampler="heun",
     s_churn=0.0,
     s_tmin=0.0,
     s_tmax=float("inf"),
     s_noise=1.0,
     generator=None,
-    ts=None,
     classifier=None,
     cond_func=None,
 ):
@@ -36,26 +34,12 @@ def karras_sample(
 
     sample_fn = {
         "heun": sample_heun,
-        "dpm": sample_dpm,
-        "ancestral": sample_euler_ancestral,
-        "onestep": sample_onestep,
-        "progdist": sample_progdist,
         "euler": sample_euler,
-        "multistep": stochastic_iterative_sampler,
     }[sampler]
 
-    if sampler in ["heun", "dpm"]:
+    if sampler in ["heun"]:
         sampler_args = dict(
             s_churn=s_churn, s_tmin=s_tmin, s_tmax=s_tmax, s_noise=s_noise
-        )
-    elif sampler == "multistep":
-        sampler_args = dict(
-            ts=ts, t_min=sigma_min, t_max=sigma_max, rho=rho, steps=steps
-        )
-    elif sampler == "stochastic":
-        sampler_args = dict(
-            s_churn=s_churn, s_tmin=s_tmin, s_tmax=s_tmax, s_noise=s_noise,
-            t_min=sigma_min, t_max=sigma_max, rho=rho, steps=steps,
         )
     else:
         sampler_args = {}
@@ -70,10 +54,6 @@ def karras_sample(
         return denoised
     
     def cls_denoiser(x_t, sigma):
-        # if model_kwargs.get("cfg_scale", 1.) > 1.:
-        #     vec = model.forward_with_cfg(sigma, x_t, **model_kwargs)
-        # else:
-        #     vec = model(sigma, x_t, **model_kwargs)
         vec = model(sigma, x_t)
         cond_vec = cond_func(classifier, x_t, 1.-sigma, **model_kwargs)
         return vec + cond_vec
@@ -151,23 +131,13 @@ def sample_heun(
     generator,
     progress=False,
     callback=None,
-    t_min=0.002,
-    t_max=80.0,
-    rho=7.0,
     steps=40,
     s_churn=0.,
     s_tmin=0.0,
     s_tmax=float("inf"),
     s_noise=1.0,
 ):
-    # t_max_rho = t_max ** (1 / rho)
-    # t_min_rho = t_min ** (1 / rho)
     s_in = x.new_ones([x.shape[0]])
-
-    # Time step discretization.
-    # step_indices = th.arange(steps, dtype=th.float32, device=x.device)
-    # t_steps = (t_max_rho + step_indices / (steps - 1) * (t_min_rho - t_max_rho)) ** rho
-    # t_steps = th.cat([t_steps, th.zeros_like(t_steps[:1])]) # t_N = 0
     t_steps = sigmas
 
     x_next = x
