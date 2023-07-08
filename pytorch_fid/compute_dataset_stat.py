@@ -5,8 +5,8 @@ import numpy as np
 import torch
 import torchvision
 from datasets_prep import get_dataset
-from pytorch_fid.fid_score import compute_statistics_of_path
-from pytorch_fid.inception import InceptionV3
+from .fid_score import compute_statistics_of_path
+from .inception import InceptionV3
 from tqdm import tqdm
 
 
