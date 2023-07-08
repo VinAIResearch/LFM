@@ -160,12 +160,17 @@ def sample_and_test(rank, gpu, args):
     #### as the same seed can cause identical generation on other gpus
     generator = get_generator(args.generator, args.n_sample, seed)
 
-    def run_sampling(num_samples, generator):
+    def run_sampling(num_samples, generator, cls_index=None):
         x = generator.randn(num_samples, 4, args.image_size//8, args.image_size//8).to(device)
         if args.num_classes in [None, 1]:
             model_kwargs = {}
         else:
-            y = generator.randint(0, args.num_classes, (num_samples,), device=device)
+            if cls_index is None:
+                y = generator.randint(0, args.num_classes, (num_samples,), device=device)
+            else:
+                y = torch.ones(num_samples, device=device, dtype=torch.long) * cls_index
+                y = y.long()
+
             # Setup classifier-free guidance:
             if args.cfg_scale > 1.:
                 x = torch.cat([x, x], 0)
@@ -275,29 +280,6 @@ def sample_and_test(rank, gpu, args):
 
         for i in pbar:
             with torch.no_grad():
-                # x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-                # if args.num_classes in [None, 1]:
-                #     model_kwargs = {}
-                # else:
-                #     y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
-                #     # Setup classifier-free guidance:
-                #     if args.cfg_scale > 1.:
-                #         x = torch.cat([x, x], 0)
-                #         y_null = torch.tensor([args.num_classes] * args.batch_size, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
-                #         y = torch.cat([y, y_null], 0)
-                #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
-                #     else:
-                #         model_kwargs = dict(y=y)
-                #
-                # if not args.use_karras_samplers:
-                #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
-                # else:
-                #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
-
-                # if args.cfg_scale > 1.:
-                #     fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
-
-                # fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
                 fake_image = run_sampling(args.batch_size, generator)
                 fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
                 for j, x in enumerate(fake_image):
@@ -321,35 +303,17 @@ def sample_and_test(rank, gpu, args):
     else:
         print("Inference")
         with torch.no_grad():
-            # x = generator.randn(args.batch_size, 4, args.image_size//8, args.image_size//8).to(device)
-            # if args.num_classes in [None, 1]:
-            #     model_kwargs = {}
-            # else:
-            #     y = generator.randint(0, args.num_classes, (args.batch_size,), device=device)
-            #     # Setup classifier-free guidance:
-            #     if args.cfg_scale > 1.:
-            #         x = torch.cat([x, x], 0)
-            #         y_null = torch.tensor([args.num_classes] * args.batch_size, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
-            #         y = torch.cat([y, y_null], 0)
-            #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
-            #     else:
-            #         model_kwargs = dict(y=y)
-            #
-            # if not args.use_karras_samplers:
-            #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
-            # else:
-            #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
-
-            # if args.cfg_scale > 1.:
-            #     fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
-            # fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
             fake_image = run_sampling(args.batch_size, generator)
         fake_image = torch.clamp(to_range_0_1(fake_image), 0, 1)
         if not args.use_karras_samplers:
-            save_path = './samples_{}_{}_{}_{}.jpg'.format(args.dataset, args.method, args.atol, args.rtol)
+            save_path = './samples_{}_{}_{}_{}'.format(args.dataset, args.method, args.atol, args.rtol)
         else:
-            save_path = './samples_{}_{}_{}.jpg'.format(args.dataset, args.method, args.num_steps)
-        torchvision.utils.save_image(fake_image, save_path)
+            save_path = './samples_{}_{}_{}'.format(args.dataset, args.method, args.num_steps)
+        if args.num_classes:
+            save_path += "_cls{}_cfg{}".format(cls_index, args.cfg_scale)
+        save_path += ".jpg"
+
+        torchvision.utils.save_image(fake_image, save_path, padding=0, nrow=3)
         print("Samples are save at '{}".format(save_path))
 
 
