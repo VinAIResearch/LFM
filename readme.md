@@ -1,11 +1,11 @@
 ##### Table of contents
 
-1. [Installation](#Installation)
-2. [Dataset preparation](#Dataset-preparation)
-3. [Training](#Training)
-4. [Testing](#Testing)
-5. [Acknowledgments](#Acknowledgments)
-6. [Contacts](#Contacts)
+1. [Installation](#installation)
+2. [Dataset preparation](#dataset-preparation)
+3. [Training](#training)
+4. [Testing](#testing)
+5. [Acknowledgments](#acknowledgments)
+6. [Contacts](#contacts)
 
 # Official PyTorch implementation of "Flow Matching in Latent Space"
 
