@@ -5,7 +5,7 @@ This project page is inherited from the [Nerfies website](https://nerfies.github
 If you find LFM useful for your work, please cite:
 ```
 @article{dao2023lfm,
-    author    = {Dao, Quan and Phung, Hao and Nguyen, Binh and Tran, Anh},
+    author    = {Quan Dao and Hao Phung and Binh Nguyen and Anh Tran},
     title     = {Flow Matching in Latent Space},
     journal   = {arXiv preprint arXiv:2307.08698},
     year      = {2023}
