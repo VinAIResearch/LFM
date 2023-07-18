@@ -7,8 +7,7 @@ If you find LFM useful for your work, please cite:
 @article{dao2023lfm,
     author    = {Dao, Quan and Phung, Hao and Tran, Anh},
     title     = {Flow Matching in Latent Space},
-    journal   = {arXiv preprint},
-    volume    = {arXiv:<id>},
+    journal   = {arXiv preprint arXiv:2307.08698},
     year      = {2023}
 }
 ```
