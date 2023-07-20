@@ -17,8 +17,8 @@
   <br> <br>
   <a href="https://www.vinai.io/">VinAI Research</a>
   <br> <br
-  <a href="">[Page]</a>&emsp;&emsp;
-  <a href="https://arxiv.org/abs/2211.16152">[Paper]</a> &emsp;&emsp;
+  <a href="https://vinairesearch.github.io/LFM/">[Page]</a> &emsp;&emsp;
+  <a href="https://arxiv.org/abs/2307.08698">[Paper]</a> &emsp;&emsp;
   <!-- <a href="https://drive.google.com/file/d/1LSEYfdhS4Zjtx1VRrctmVt6xjEjgmpVA/view?usp=sharing">[Poster]</a> &emsp;&emsp;
   <a href="https://drive.google.com/file/d/11JE-RFtYJWx6XdXH8zZxgzRAvGJ6-IV2/view?usp=sharing">[Slides]</a> &emsp;&emsp;
   <a href="https://youtu.be/KaIMMamhKsU">[Video]</a> -->
@@ -28,17 +28,15 @@
   <img width="1000" alt="teaser" src="assets/archi.svg"/>
 </div>
 
-> Abstract: Flow matching is a recent framework to train generative models that exhibits impressive empirical performance while being relatively easier to train compared with diffusion-based models.
-> Despite its advantageous properties, prior methods still face the challenges of expensive computing and a large number of function evaluations of off-the-shelf solvers in the pixel space. Furthermore, although latent-based generative methods have shown great success in recent years, this particular model type remains underexplored in this area. In this work, we propose to apply flow matching in the latent spaces of pretrained autoencoders, which offers improved computational efficiency and scalability for high-resolution image synthesis. This enables flow-matching training on constrained computational resources while maintaining their quality and flexibility. Through extensive experiments, our approach demonstrates its effectiveness in both quantitative and qualitative results on various datasets, such as CelebA-HQ, FFHQ, LSUN Church \& Bedroom, and ImageNet. We also provide a theoretical control of the Wasserstein-2 distance between the reconstructed latent flow distribution and true data distribution, showing it is upper-bounded by the latent flow matching objective.
+> Abstract: Flow matching is a recent framework to train generative models that exhibits impressive empirical performance while being relatively easier to train compared with diffusion-based models. Despite its advantageous properties, prior methods still face the challenges of expensive computing and a large number of function evaluations of off-the-shelf solvers in the pixel space. Furthermore, although latent-based generative methods have shown great success in recent years, this particular model type remains underexplored in this area. In this work, we propose to apply flow matching in the latent spaces of pretrained autoencoders, which offers improved computational efficiency and scalability for high-resolution image synthesis. This enables flow-matching training on constrained computational resources while maintaining their quality and flexibility. Additionally, our work stands as a pioneering contribution in the integration of various conditions into flow matching for conditional generation tasks, including label-conditioned image generation, image inpainting, and semantic-to-image generation. Through extensive experiments, our approach demonstrates its effectiveness in both quantitative and qualitative results on various datasets, such as CelebA-HQ, FFHQ, LSUN Church & Bedroom, and ImageNet. We also provide a theoretical control of the Wasserstein-2 distance between the reconstructed latent flow distribution and true data distribution, showing it is upper-bounded by the latent flow matching objective.
 
-Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
+Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2307.08698):
 
 ```bibtex
 @article{dao2023lfm,
-    author    = {Dao, Quan and Phung, Hao and Tran, Anh},
+    author    = {Quan Dao and Hao Phung and Binh Nguyen and Anh Tran},
     title     = {Flow Matching in Latent Space},
-    journal   = {arXiv preprint},
-    volume    = {arXiv:<id>},
+    journal   = {arXiv preprint arXiv:2307.08698},
     year      = {2023}
 }
 ```
@@ -47,7 +45,7 @@ Details of the model architecture and experimental results can be found in [our 
 
 ## Installation
 
-Python 3.8 and Pytorch 1.13.1 are used in this implementation.
+Python `3.10` and Pytorch `1.13.1`/`2.0.0` are used in this implementation.
 Please install required libraries:
 
 ```
@@ -182,8 +180,6 @@ Argument's files and checkpoints are provided below:
   </tr>
 
 </table>
-
-> All attached links are made by an anonymous account.
 
 Please put downloaded pre-trained models in `saved_info/latent_flow/<DATASET>/<EXP>` directory where `<DATASET>` is defined as in [bash_scripts/run.sh](./bash_scripts/run.sh).
 
