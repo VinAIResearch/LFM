@@ -68,7 +68,7 @@ All training scripts are wrapped in [run.sh](bash_scripts/run.sh). Simply commen
 
 ### Sampling
 
-Run [run_test.sh](bash_scripts/run_test.sh) /[run_test_cls.sh](bash_scripts/run_test_cls.sh) with corresponding argument's file.
+Run [run_test.sh](bash_scripts/run_test.sh) / [run_test_cls.sh](bash_scripts/run_test_cls.sh) with corresponding argument's file.
 
 ```
 bash run_test.sh <path_to_arg_file>
