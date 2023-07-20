@@ -131,10 +131,10 @@ Argument's files and checkpoints are provided below:
   </tr>
 
   <tr>
-    <td> imnet_f8_dit </td>
+    <td> imnet_f8_ditb2 </td>
     <td><a href="test_args/imnet_dit.txt"> test_args/imnet_dit.txt</a></td>
     <td>4.46</td>
-    <td>---</td>
+    <td><a href="https://drive.google.com/file/d/1SUc9M85WOfi4CZfRJkpf2tDu3g9dC3YI/view?usp=sharing">model_875.pth</a></td>
   </tr>
 
   <tr>
