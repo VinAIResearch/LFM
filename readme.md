@@ -16,7 +16,7 @@
   <a href="https://sites.google.com/site/anhttranusc/" target="_blank">Anh&nbsp;Tran</a>
   <br> <br>
   <a href="https://www.vinai.io/">VinAI Research</a>
-  <br> <br
+  <br> <br>
   <a href="https://vinairesearch.github.io/LFM/">[Page]</a> &emsp;&emsp;
   <a href="https://arxiv.org/abs/2307.08698">[Paper]</a> &emsp;&emsp;
   <!-- <a href="https://drive.google.com/file/d/1LSEYfdhS4Zjtx1VRrctmVt6xjEjgmpVA/view?usp=sharing">[Poster]</a> &emsp;&emsp;
@@ -224,4 +224,4 @@ Our codes are accumulated from different sources: [EDM](https://github.com/NVlab
 
 ## Contacts
 
-If you have any problems, please open an issue in this repository or ping an email to [v.quandm7@vinai.io](mailto:v.quandm7@vinai.io)/[tienhaophung@gmail.com](mailto:tienhaophung@gmail.com).
+If you have any problems, please open an issue in this repository or ping an email to [v.quandm7@vinai.io](mailto:v.quandm7@vinai.io) / [tienhaophung@gmail.com](mailto:tienhaophung@gmail.com).
