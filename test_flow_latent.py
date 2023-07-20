@@ -4,6 +4,7 @@
 # This work is licensed under the NVIDIA Source Code License
 # for Denoising Diffusion GAN. To view a copy of this license, see the LICENSE file.
 # ---------------------------------------------------------------
+
 import argparse
 import math
 import os
@@ -75,7 +76,7 @@ def sample_from_model(model, x_0, model_kwargs, args):
     return fake_image
 
 
-def sample_from_model2(model, x, model_kwargs, generator, args):
+def sample_from_model_with_fixed_step_solver(model, x, model_kwargs, generator, args):
     sample = karras_sample(
         model,
         x,
@@ -133,6 +134,7 @@ def sample_and_test(rank, gpu, args):
         "./saved_info/latent_flow/{}/{}/model_{}.pth".format(args.dataset, args.exp, args.epoch_id),
         map_location=device,
     )
+
     print("Finish loading model")
     # loading weights from ddp in single gpu
     for key in list(ckpt.keys()):
@@ -144,7 +146,7 @@ def sample_and_test(rank, gpu, args):
 
     iters_needed = args.n_sample // args.batch_size
     save_dir = "./generated_samples/{}/exp{}_ep{}_m{}".format(args.dataset, args.exp, args.epoch_id, args.method)
-    # save_dir = "./generated_samples/{}".format(args.dataset)
+    
     if args.method in FIXER_SOLVER:
         save_dir += "_s{}".format(args.num_steps)
 
@@ -183,7 +185,7 @@ def sample_and_test(rank, gpu, args):
         if not args.use_karras_samplers:
             fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
         else:
-            fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
+            fake_sample = sample_from_model_with_fixed_step_solve(model, x, model_kwargs, generator, args)
 
         if args.cfg_scale > 1.0:
             fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
@@ -232,28 +234,6 @@ def sample_and_test(rank, gpu, args):
         with torch.no_grad():
             for rep in tqdm(range(repetitions)):
                 starter.record()
-                # x = generator.randn(1, 4, args.image_size//8, args.image_size//8).to(device)
-                # if args.num_classes in [None, 1]:
-                #     model_kwargs = {}
-                # else:
-                #     y = generator.randint(0, args.num_classes, (1,), device=device)
-                #     # Setup classifier-free guidance:
-                #     if args.cfg_scale > 1.:
-                #         x = torch.cat([x, x], 0)
-                #         y_null = torch.tensor([args.num_classes] * 1, device=device) if "DiT" in args.model_type else torch.zeros_like(y)
-                #         y = torch.cat([y, y_null], 0)
-                #         model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
-                #     else:
-                #         model_kwargs = dict(y=y)
-                #
-                # if not args.use_karras_samplers:
-                #     fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
-                # else:
-                #     fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
-
-                # if args.cfg_scale > 1.:
-                #     fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples
-                # fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
                 _ = run_sampling(1, generator)
                 ender.record()
                 # WAIT FOR GPU SYNC
@@ -311,11 +291,11 @@ def sample_and_test(rank, gpu, args):
             save_path = "./samples_{}_{}_{}_{}".format(args.dataset, args.method, args.atol, args.rtol)
         else:
             save_path = "./samples_{}_{}_{}".format(args.dataset, args.method, args.num_steps)
-        if args.num_classes:
+        if args.num_classes is not None and args.num_classes > 1:
             save_path += "_cfg{}".format(args.cfg_scale)
         save_path += ".jpg"
 
-        torchvision.utils.save_image(fake_image, save_path, padding=0, nrow=3)
+        torchvision.utils.save_image(fake_image, save_path, padding=0, nrow=8)
         print("Samples are save at '{}".format(save_path))
 
 

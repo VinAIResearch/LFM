@@ -7,3 +7,4 @@ timm
 ninja
 blobfile
 accelerate
+einops

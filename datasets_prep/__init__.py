@@ -2,7 +2,6 @@ import torch
 import torchvision.transforms as transforms
 from datasets_prep.data_transforms import center_crop_arr
 from datasets_prep.inpainting_dataset import InpaintingTrainDataset
-from datasets_prep.latent_datasets import LatentDataset
 from datasets_prep.lmdb_datasets import LMDBDataset
 from datasets_prep.lsun import LSUN
 from torchvision.datasets import CIFAR10, ImageNet
@@ -35,11 +34,6 @@ def get_dataset(args):
                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                 ]
             ),
-        )
-
-    elif args.dataset == "latent_imagenet_256":
-        dataset = LatentDataset(
-            args.datadir, train=True, transform=transforms.Compose([transforms.RandomHorizontalFlip()])
         )
 
     elif args.dataset == "lsun_church":

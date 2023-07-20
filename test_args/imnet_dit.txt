@@ -1,7 +1,7 @@
 MODEL_TYPE=DiT-B/2
 EPOCH_ID=875
 DATASET=imagenet_256
-EXP=laflo_imnet_f8_ditb2
+EXP=imnet_f8_ditb2
 METHOD=dopri5
 STEPS=0
 CFG=1.5

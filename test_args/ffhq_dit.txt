@@ -4,5 +4,5 @@ DATASET=ffhq_256
 EXP=ffhq_f8_dit
 METHOD=dopri5
 STEPS=0
-USE_ORIGIN_ADM=False
+USE_ORIGIN_ADM=false
 IMG_SIZE=256

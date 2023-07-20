@@ -15,7 +15,7 @@ from models import create_network
 from PIL import Image
 from pytorch_fid.fid_score import calculate_fid_given_paths
 from sampler.random_util import get_generator
-from test_flow_latent import FIXER_SOLVER, sample_from_model, sample_from_model2
+from test_flow_latent import FIXER_SOLVER, sample_from_model, sample_from_model_with_fixed_step_solver
 from tqdm import tqdm
 
 
@@ -102,7 +102,7 @@ def main(args):
         if not args.use_karras_samplers:
             fake_sample = sample_from_model(model, x, model_kwargs, args)[-1]
         else:
-            fake_sample = sample_from_model2(model, x, model_kwargs, generator, args)
+            fake_sample = sample_from_model_with_fixed_step_solver(model, x, model_kwargs, generator, args)
 
         if args.cfg_scale > 1.0:
             fake_sample, _ = fake_sample.chunk(2, dim=0)  # Remove null class samples

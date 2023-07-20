@@ -1,11 +1,12 @@
 ############################################### ADM ~ CelebA 256 ###############################################
-# accelerate launch --num_processes 1 train_flow_latent.py --exp celeba_f8_adm \
-#     --dataset celeba_256 --datadir data/celeba/celeba-lmdb \
-#     --batch_size 32 --num_epoch 500 \
+# accelerate launch --num_processes 1 train_flow_latent.py --exp celeb256_f8_adm \
+#     --dataset celeba_256 --datadir ../cnf_flow/data/celeba/celeba-lmdb \
+#     --batch_size 112 --num_epoch 500 \
 #     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
+#     --nf 256 --ch_mult 1 2 2 2 --attn_resolution 16 8 --num_res_blocks 2 \
 #     --lr 2e-5 --scale_factor 0.18215 \
 #     --save_content --save_content_every 10 \
+#     --use_origin_adm
 
 
 ############################################### ADM ~ FFHQ 256 ###############################################
@@ -38,16 +39,6 @@
 #     --save_content --save_content_every 10 \
 
 
-# accelerate launch --multi_gpu --num_processes 7 --mixed_precision fp16 --main_process_port 28500 train_flow_latent.py --exp laflo_imnet_f8_adm_crossattn \
-#     --dataset imagenet_256 --datadir ./data/imagenet/ \
-#     --batch_size 128 --num_epoch 1800 --label_dim 1000 \
-#     --image_size 256 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
-#     --lr 1e-4 --scale_factor 0.18215 --no_lr_decay \
-#     --model_type adm_context --num_classes 1000 --label_dropout 0.1 \
-#     --save_content --save_content_every 5 \
-
-
 ############################################### DiT-B/2 ~ IMNET 256 ###############################################
 # accelerate launch --multi_gpu --num_processes 8 train_flow_latent.py --exp imnet_f8_ditb2 \
 #     --dataset imagenet_256 --datadir ./data/imagenet/ \
@@ -68,17 +59,6 @@
 #     --nf 256 --ch_mult 1 2 3 4 --attn_resolution 16 8 4 --num_res_blocks 2 \
 #     --lr 2e-4 --scale_factor 0.18215 --no_lr_decay \
 #     --model_type DiT-L/2 --num_classes 1 --label_dropout 0. \
-#     --save_content --save_content_every 10 \
-
-
-############################################### ADM ~ CelebA 1024 ###############################################
-# accelerate launch --multi_gpu --num_processes 8 --mixed_precision bf16 train_flow_latent.py \
-#     --exp laflo_celeb1024_f8 \
-#     --dataset celeba_1024 --datadir data/celeba_1024/celeba-lmdb-1024 \
-#     --batch_size 6 --num_epoch 800 \
-#     --image_size 1024 --f 8 --num_in_channels 4 --num_out_channels 4 \
-#     --nf 256 --ch_mult 1 1 2 2 4 4 --attn_resolution 16 8 --num_res_blocks 2 \
-#     --lr 2e-5 --scale_factor 0.18215 --no_lr_decay \
 #     --save_content --save_content_every 10 \
 
 
@@ -135,3 +115,4 @@
 #     --nf 256 --ch_mult 1 2 2 2 4 --attn_resolution 16 8 --num_res_blocks 2 \
 #     --lr 2e-5 --scale_factor 0.18215 --no_lr_decay \
 #     --save_content --save_content_every 10 \
+#     --use_origin_adm \

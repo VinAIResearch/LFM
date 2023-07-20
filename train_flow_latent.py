@@ -34,14 +34,6 @@ def copy_source(file, output_dir):
 
 
 def get_weight(model):
-    # param_size = 0
-    # for param in model.parameters():
-    #     param_size += param.nelement() * param.element_size()
-    # buffer_size = 0
-    # for buffer in model.buffers():
-    #     buffer_size += buffer.nelement() * buffer.element_size()
-    # size_all_mb = (param_size + buffer_size) / 1024**2
-
     size_all_mb = sum(p.numel() for p in model.parameters()) / 1024**2
     return size_all_mb
 
@@ -153,13 +145,11 @@ def train(args):
             t = torch.rand((z_0.size(0),), dtype=dtype, device=device)
             t = t.view(-1, 1, 1, 1)
             z_1 = torch.randn_like(z_0)
-            # corrected notation: 1 is real noise, 0 is real data
-            v_t = (1 - t) * z_0 + (1e-5 + (1 - 1e-5) * t) * z_1
+            # 1 is real noise, 0 is real data
+            z_t = (1 - t) * z_0 + (1e-5 + (1 - 1e-5) * t) * z_1
             u = (1 - 1e-5) * z_1 - z_0
-            # alternative notation (similar to flow matching): 1 is data, 0 is real noise
-            # v_t = (1 - (1 - 1e-5) * t) * z_0 + t * z_1
-            # u = z_1 - (1 - 1e-5) * z_0
-            v = model(t.squeeze(), v_t, y)
+            # estimate velocity
+            v = model(t.squeeze(), z_t, y)
             loss = F.mse_loss(v, u)
             accelerator.backward(loss)
             optimizer.step()
@@ -192,7 +182,6 @@ def train(args):
                     # sample_func = lambda t, x: model(t, x, y=y)
                     fake_sample = sample_from_model(sample_model, rand)[-1]
                     fake_image = first_stage_model.decode(fake_sample / args.scale_factor).sample
-                # torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_epoch_{}.png'.format(epoch)), normalize=True, value_range=(-1, 1))
                 torchvision.utils.save_image(
                     fake_image,
                     os.path.join(exp_path, "image_epoch_{}.png".format(epoch)),
