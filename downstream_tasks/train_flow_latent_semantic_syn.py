@@ -19,7 +19,7 @@ from datasets_prep.ade20k import ADE20kTrain
 from datasets_prep.celeb_mask import CelebAMaskTrain
 from datasets_prep.coco import CocoImagesAndCaptionsTrain
 from models.encoder import SpatialRescaler
-from models.util import get_flow_model
+from models import get_flow_model
 from omegaconf import OmegaConf
 from torch.multiprocessing import Process
 from torchdiffeq import odeint_adjoint as odeint
@@ -110,7 +110,7 @@ def train(rank, gpu, args):
     )
     args.layout = False
     model = get_flow_model(args).to(device)
-    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
+    first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device)
     first_stage_model = first_stage_model.eval()
     first_stage_model.train = False
     for param in first_stage_model.parameters():
@@ -306,6 +306,8 @@ if __name__ == "__main__":
     parser.add_argument("--use_scale_shift_norm", type=bool, default=True)
     parser.add_argument("--resblock_updown", type=bool, default=False)
     parser.add_argument("--use_new_attention_order", type=bool, default=False)
+
+    parser.add_argument("--pretrained_autoencoder_ckpt", type=str, default="../stabilityai/sd-vae-ft-mse")
 
     # geenrator and training
     parser.add_argument("--exp", default="experiment_cifar_default", help="name of experiment")

@@ -7,6 +7,10 @@ Image inpainting: We follow the training and evaluating protocol from paper: [MA
 Semantic synthesis: We use CelebHQ 256 including the first `27,000` images for training and `3,000` images for testing.
 
 ## Training
+Assuming the current working directory is at `lfm` folder, please add `PYTHONPATH` first before running: 
+```
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+```
 
 For downstream tasks as image inpaiting and semantic synthesis, we use the below commands.
 

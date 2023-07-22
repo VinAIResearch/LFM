@@ -8,3 +8,5 @@ ninja
 blobfile
 accelerate
 einops
+opencv-python
+scikit-image

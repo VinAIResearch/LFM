@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from diffusers.models import AutoencoderKL
-from models.util import get_flow_model
+from models import get_flow_model
 from PIL import Image
 from torch.utils.data import Dataset
 from torchdiffeq import odeint_adjoint as odeint
@@ -118,7 +118,7 @@ def sample_and_test(args):
     args.layout = False
 
     model = get_flow_model(args).to(device)
-    first_stage_model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
+    first_stage_model = AutoencoderKL.from_pretrained(args.pretrained_autoencoder_ckpt).to(device)
     ckpt = torch.load(
         "./saved_info/latent_flow_inpaint/{}/{}/model_{}.pth".format(args.dataset, args.exp, args.epoch_id),
         map_location=device,
@@ -218,6 +218,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--step_size", type=float, default=0.01, help="step_size")
     parser.add_argument("--perturb", action="store_true", default=False)
+
+    parser.add_argument("--pretrained_autoencoder_ckpt", type=str, default="../stabilityai/sd-vae-ft-mse")
 
     args = parser.parse_args()
 
