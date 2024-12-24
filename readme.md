@@ -43,6 +43,9 @@ Details of the model architectures and experimental results can be found in [our
 
 **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
 
+**News**
+- [24th Dec, 2024] Add pretrained checkpoints for ADM experiments in [Testing](#testing) table.
+
 ## Installation
 
 Python `3.10` and Pytorch `1.13.1`/`2.0.0` are used in this implementation.
@@ -147,36 +150,36 @@ Argument's files and checkpoints are provided below:
   <tr>
     <td> celeba_f8_adm </td>
     <td><a href="test_args/celeb256_adm.txt"> test_args/celeb256_adm.txt</a></td>
-    <td>5.82</td>
-    <td>---</td>
+    <td>5.67</td>
+    <td><a href="https://drive.google.com/file/d/1AIuMr5Ewti6_wQAJdM9elsrERwrxI9Sb/view?usp=drive_link">model_480.pth</a></td>
   </tr>
 
   <tr>
     <td> ffhq_f8_adm </td>
     <td><a href="test_args/ffhq_adm.txt"> test_args/ffhq_adm.txt</a></td>
-    <td>5.82</td>
-    <td>---</td>
+    <td>6.12</td>
+    <td><a href="https://drive.google.com/file/d/1ZxOhFvG-zho5WNXfDC4KcFne_y1Tln2K/view?usp=drive_link">model_325.pth</a></td>
   </tr>
 
   <tr>
     <td> bed_f8_adm </td>
     <td><a href="test_args/bed_adm.txt"> test_args/bed_adm.txt</a></td>
     <td>7.05</td>
-    <td>---</td>
+    <td><a href="https://drive.google.com/file/d/1BGXNXy8cS4lKt5BN2tV5W6w89bR69M9l/view?usp=drive_link">model_425.pth</a></td>
   </tr>
 
   <tr>
     <td> church_f8_adm </td>
     <td><a href="test_args/church_adm.txt"> test_args/church_adm.txt</a></td>
     <td>7.7</td>
-    <td>---</td>
+    <td><a href="https://drive.google.com/file/d/178RJQ6_HH-lqto1hhaN-vGwCC5npHzn-/view?usp=drive_link">model_425.pth</a></td>
 
   </tr>
   <tr>
     <td> imnet_f8_adm </td>
     <td><a href="test_args/imnet_adm.txt"> test_args/imnet_adm.txt</a></td>
     <td>8.58</td>
-    <td>---</td>
+    <td><a href="https://drive.google.com/file/d/1vrHrp4fjhUtlQumIQ3f-36i-XdtGM8Rv/view?usp=drive_link">model_1125.pth</a></td>
   </tr>
 
 </table>
