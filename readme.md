@@ -227,4 +227,4 @@ Our codes are accumulated from different sources: [EDM](https://github.com/NVlab
 
 ## Contacts
 
-If you have any problems, please open an issue in this repository or ping an email to [v.quandm7@vinai.io](mailto:v.quandm7@vinai.io) / [tienhaophung@gmail.com](mailto:tienhaophung@gmail.com).
+If you have any problems, please open an issue in this repository or ping an email to [kevinquandao10@gmail.com](mailto:kevinquandao10@gmail.com) / [tienhaophung@gmail.com](mailto:tienhaophung@gmail.com).
