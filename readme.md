@@ -142,9 +142,9 @@ Argument's files and checkpoints are provided below:
 
   <tr>
     <td> celeb512_f8_adm </td>
-    <td><a href="test_args/celeb256_adm.txt"> test_args/celeb512_adm.txt</a></td>
+    <td><a href="test_args/celeb512_adm.txt"> test_args/celeb512_adm.txt</a></td>
     <td>6.35</td>
-    <td><a href="https://drive.google.com/drive/folders/1lWE9hCqzZ2Q1mS2BmTsA3nYWB_T25wqV?usp=share_link">model_575.pth</a></td>
+    <td><a href="https://drive.google.com/drive/folders/1lWE9hCqzZ2Q1mS2BmTsA3nYWB_T25wqV?usp=share_link">model_425.pth</a></td>
   </tr>
 
   <tr>
